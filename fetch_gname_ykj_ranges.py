@@ -40,6 +40,11 @@ DEFAULT_PROFILE_DIR = "gname_browser_profile"
 JS_QUERY = """
 async ({ endpoint, payload }) => {
     try {
+        const params = new URLSearchParams();
+        for (const [key, value] of Object.entries(payload)) {
+            params.append(key, value == null ? '' : String(value));
+        }
+
         const resp = await fetch(endpoint, {
             method: 'POST',
             credentials: 'include',
@@ -48,7 +53,7 @@ async ({ endpoint, payload }) => {
                 'X-Requested-With': 'XMLHttpRequest',
                 'Accept': 'application/json, text/javascript, */*; q=0.01'
             },
-            body: new URLSearchParams(payload)
+            body: params
         });
 
         const text = await resp.text();
@@ -252,6 +257,136 @@ def page_signature(items: list[dict[str, Any]]) -> tuple[str, ...]:
     return tuple(signature)
 
 
+CSV_FIELDS = [
+    "range_min",
+    "range_max",
+    "page",
+    "domain",
+    "price",
+    "currency",
+    "fbsj",
+    "zcsj",
+    "dqsj",
+    "ym_nian",
+    "ggsl",
+    "bdsl",
+    "da",
+    "pa",
+    "jj",
+]
+
+IMPORT_FIELDS = [
+    "Domain",
+    "Buy Now Price",
+    "Floor Price",
+    "Min Offer",
+    "Lease to Own",
+    "Max Lease Period",
+    "Sale Lander",
+    "Show Buy Now Option",
+    "Show Lease to Own Option",
+    "Show Make Offer Option",
+    "Hidden",
+]
+
+
+def csv_row(row: dict[str, Any]) -> dict[str, Any]:
+    raw = row.get("raw") or {}
+    return {
+        "range_min": row.get("range_min", ""),
+        "range_max": row.get("range_max", ""),
+        "page": row.get("page", ""),
+        "domain": row.get("domain", ""),
+        "price": row.get("price", ""),
+        "currency": row.get("currency", ""),
+        "fbsj": raw.get("fbsj", ""),
+        "zcsj": raw.get("zcsj", ""),
+        "dqsj": raw.get("dqsj", ""),
+        "ym_nian": raw.get("ym_nian", ""),
+        "ggsl": raw.get("ggsl", ""),
+        "bdsl": raw.get("bdsl", ""),
+        "da": raw.get("da", ""),
+        "pa": raw.get("pa", ""),
+        "jj": raw.get("jj", ""),
+    }
+
+
+def import_csv_row(row: dict[str, Any]) -> dict[str, Any]:
+    import_price = import_price_for_range(str(row.get("range_max", "0")))
+    return {
+        "Domain": row.get("domain", ""),
+        "Buy Now Price": import_price,
+        "Floor Price": "",
+        "Min Offer": import_price,
+        "Lease to Own": "N",
+        "Max Lease Period": "",
+        "Sale Lander": "",
+        "Show Buy Now Option": "",
+        "Show Lease to Own Option": "",
+        "Show Make Offer Option": "",
+        "Hidden": "N",
+    }
+
+
+class IncrementalOutputWriter:
+    def __init__(self, args: argparse.Namespace) -> None:
+        os.makedirs(args.output_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        prefix = f"{args.output_prefix}_{timestamp}"
+
+        self.csv_path = os.path.join(args.output_dir, f"{prefix}.csv")
+        self.json_path = os.path.join(args.output_dir, f"{prefix}_full.json")
+        self.jsonl_path = os.path.join(args.output_dir, f"{prefix}_full.jsonl")
+        self.domains_path = os.path.join(args.output_dir, f"{prefix}_domains.txt")
+        self.import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
+
+        self._csv_file = open(self.csv_path, "w", encoding="utf-8-sig", newline="")
+        self._jsonl_file = open(self.jsonl_path, "w", encoding="utf-8")
+        self._domains_file = open(self.domains_path, "w", encoding="utf-8")
+        self._import_csv_file = open(self.import_csv_path, "w", encoding="utf-8", newline="")
+
+        self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=CSV_FIELDS)
+        self._csv_writer.writeheader()
+        self._import_csv_writer = csv.DictWriter(self._import_csv_file, fieldnames=IMPORT_FIELDS)
+        self._import_csv_writer.writeheader()
+        self.count = 0
+        self._closed = False
+
+    def append_rows(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        for row in rows:
+            self._csv_writer.writerow(csv_row(row))
+            self._jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
+            self._domains_file.write(f"{row['domain']}\n")
+            self._import_csv_writer.writerow(import_csv_row(row))
+            self.count += 1
+        self.flush()
+
+    def flush(self) -> None:
+        self._csv_file.flush()
+        self._jsonl_file.flush()
+        self._domains_file.flush()
+        self._import_csv_file.flush()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._csv_file.close()
+        self._jsonl_file.close()
+        self._domains_file.close()
+        self._import_csv_file.close()
+        self._closed = True
+
+    def finalize(self) -> tuple[str, str, str, str]:
+        self.close()
+        with open(self.jsonl_path, "r", encoding="utf-8") as source:
+            rows = [json.loads(line) for line in source if line.strip()]
+        with open(self.json_path, "w", encoding="utf-8") as target:
+            json.dump(rows, target, ensure_ascii=False, indent=2)
+        return self.csv_path, self.json_path, self.domains_path, self.import_csv_path
+
+
 def parse_extra_params(extra: str) -> dict[str, str]:
     if not extra:
         return {}
@@ -309,6 +444,7 @@ def build_payload(
 ) -> dict[str, str]:
     payload = {
         "cxfs": args.cxfs,
+        "gjz_cha": getattr(args, "gjz_cha", ""),
         "ymhz": args.ymhz,
         "zcsj_2": args.zcsj_2,
         "dqsj_1": args.dqsj_1,
@@ -356,7 +492,24 @@ def fetch_with_retry(
 ) -> Any:
     attempts = 0
     while True:
-        result = fetch_page(page, endpoint, payload)
+        try:
+            result = fetch_page(page, endpoint, payload)
+        except Exception as exc:
+            attempts += 1
+            message = str(exc)
+            print(f"[警告] 请求执行失败: {message}")
+            if attempts > retry_limit:
+                return {"error": message}
+
+            if "Execution context was destroyed" in message or "navigation" in message.lower():
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    page.wait_for_load_state("networkidle", timeout=10000)
+                except Exception:
+                    pass
+            print(f"[重试] {retry_delay:.1f} 秒后重试当前页...")
+            time.sleep(retry_delay)
+            continue
 
         code = result.get("code") if isinstance(result, dict) else None
         if code in (-1001, -105001):
@@ -415,6 +568,7 @@ def fetch_range_pages(
     all_rows: list[dict[str, Any]],
     log: Callable[[str], None] = print,
     manual_fix_handler: Callable[[int | None], None] | None = None,
+    output_writer: IncrementalOutputWriter | None = None,
 ) -> int:
     page_no = 1
     seen_pages: set[tuple[str, ...]] = set()
@@ -459,6 +613,8 @@ def fetch_range_pages(
 
         rows = parse_items(items, price_min, price_max, page_no)
         all_rows.extend(rows)
+        if output_writer:
+            output_writer.append_rows(rows)
         written_count = len(rows)
 
         returned_total += len(items)
@@ -492,48 +648,11 @@ def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> tuple[
     domains_path = os.path.join(args.output_dir, f"{prefix}_domains.txt")
     import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
 
-    csv_fields = [
-        "range_min",
-        "range_max",
-        "page",
-        "domain",
-        "price",
-        "currency",
-        "fbsj",
-        "zcsj",
-        "dqsj",
-        "ym_nian",
-        "ggsl",
-        "bdsl",
-        "da",
-        "pa",
-        "jj",
-    ]
-
     with open(csv_path, "w", encoding="utf-8-sig", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=csv_fields)
+        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
         writer.writeheader()
         for row in rows:
-            raw = row.get("raw") or {}
-            writer.writerow(
-                {
-                    "range_min": row.get("range_min", ""),
-                    "range_max": row.get("range_max", ""),
-                    "page": row.get("page", ""),
-                    "domain": row.get("domain", ""),
-                    "price": row.get("price", ""),
-                    "currency": row.get("currency", ""),
-                    "fbsj": raw.get("fbsj", ""),
-                    "zcsj": raw.get("zcsj", ""),
-                    "dqsj": raw.get("dqsj", ""),
-                    "ym_nian": raw.get("ym_nian", ""),
-                    "ggsl": raw.get("ggsl", ""),
-                    "bdsl": raw.get("bdsl", ""),
-                    "da": raw.get("da", ""),
-                    "pa": raw.get("pa", ""),
-                    "jj": raw.get("jj", ""),
-                }
-            )
+            writer.writerow(csv_row(row))
 
     with open(json_path, "w", encoding="utf-8") as file:
         json.dump(rows, file, ensure_ascii=False, indent=2)
@@ -542,39 +661,11 @@ def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> tuple[
         for row in rows:
             file.write(f"{row['domain']}\n")
 
-    import_fields = [
-        "Domain",
-        "Buy Now Price",
-        "Floor Price",
-        "Min Offer",
-        "Lease to Own",
-        "Max Lease Period",
-        "Sale Lander",
-        "Show Buy Now Option",
-        "Show Lease to Own Option",
-        "Show Make Offer Option",
-        "Hidden",
-    ]
     with open(import_csv_path, "w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=import_fields)
+        writer = csv.DictWriter(file, fieldnames=IMPORT_FIELDS)
         writer.writeheader()
         for row in rows:
-            import_price = import_price_for_range(str(row.get("range_max", "0")))
-            writer.writerow(
-                {
-                    "Domain": row.get("domain", ""),
-                    "Buy Now Price": import_price,
-                    "Floor Price": "",
-                    "Min Offer": import_price,
-                    "Lease to Own": "N",
-                    "Max Lease Period": "",
-                    "Sale Lander": "",
-                    "Show Buy Now Option": "",
-                    "Show Lease to Own Option": "",
-                    "Show Make Offer Option": "",
-                    "Hidden": "N",
-                }
-            )
+            writer.writerow(import_csv_row(row))
 
     return csv_path, json_path, domains_path, import_csv_path
 
@@ -612,6 +703,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"[配置] 浏览器资料目录: {os.path.abspath(args.profile_dir)}")
 
     all_rows: list[dict[str, Any]] = []
+    output_writer = IncrementalOutputWriter(args)
+    print(f"[保存] CSV: {output_writer.csv_path}")
+    print(f"[保存] JSONL: {output_writer.jsonl_path}")
 
     exit_code = 0
     try:
@@ -635,6 +729,7 @@ def run(args: argparse.Namespace) -> int:
                         price_min,
                         price_max,
                         all_rows,
+                        output_writer=output_writer,
                     )
 
             finally:
@@ -647,7 +742,7 @@ def run(args: argparse.Namespace) -> int:
         print("[提示] 正在保存已抓取数据...")
         exit_code = 1
 
-    csv_path, json_path, domains_path, import_csv_path = save_outputs(all_rows, args)
+    csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
     print("\n[完成] 拉取结束")
     print(f"[结果] 总计 {len(all_rows)} 条记录")
     print(f"[CSV]  {csv_path}")

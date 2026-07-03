@@ -1,2 +1,5 @@
-2026/07/02-11:56:02.419 37d0 Creating DB F:\vueWebItem\A_filterDomain\gname_browser_profile\Default\Local Storage\leveldb since it was missing.
-2026/07/02-11:56:03.456 37d0 Reusing MANIFEST F:\vueWebItem\A_filterDomain\gname_browser_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/02-18:01:01.819 4838 Reusing MANIFEST F:\vueWebItem\A_filterDomain\domaingit\pullDomain\gname_browser_profile\Default\Local Storage\leveldb/MANIFEST-000001
+2026/07/02-18:01:01.827 4838 Recovering log #3
+2026/07/02-18:01:01.827 4838 Level-0 table #3: started
+2026/07/02-18:01:01.879 4838 Level-0 table #3: 61467 bytes OK
+2026/07/02-18:01:01.920 4838 Delete type=0 #3

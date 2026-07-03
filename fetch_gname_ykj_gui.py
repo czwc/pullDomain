@@ -17,10 +17,10 @@ from fetch_gname_ykj_ranges import (
     build_fbsj_params,
     build_price_ranges,
     fetch_range_pages,
+    IncrementalOutputWriter,
     launch_context,
     money,
     parse_extra_params,
-    save_outputs,
 )
 
 
@@ -252,6 +252,7 @@ class App(tk.Tk):
 
     def _worker(self, args: argparse.Namespace) -> None:
         rows: list[dict] = []
+        output_writer: IncrementalOutputWriter | None = None
         exit_code = 0
         try:
             from playwright.sync_api import sync_playwright
@@ -259,11 +260,14 @@ class App(tk.Tk):
             ranges = build_price_ranges(args)
             fbsj_params = build_fbsj_params(args)
             extra_params = parse_extra_params(args.extra)
+            output_writer = IncrementalOutputWriter(args)
 
             self._log("[配置] 价格区间: " + ", ".join(f"{money(a)}-{money(b)}" for a, b in ranges))
             self._log(f"[配置] 后缀: {args.ymhz}")
             self._log(f"[配置] 每页数量: {args.pagesize}")
             self._log("[配置] 发布时间: " + ("&".join(f"{k}={v}" for k, v in fbsj_params.items()) if fbsj_params else "全部"))
+            self._log(f"[保存] CSV: {output_writer.csv_path}")
+            self._log(f"[保存] JSONL: {output_writer.jsonl_path}")
 
             with sync_playwright() as pw:
                 context = launch_context(pw, args)
@@ -277,6 +281,11 @@ class App(tk.Tk):
                     self._ready_event.wait()
                     if self._stop_flag:
                         raise KeyboardInterrupt
+                    try:
+                        page.wait_for_load_state("domcontentloaded", timeout=10000)
+                        page.wait_for_load_state("networkidle", timeout=10000)
+                    except Exception:
+                        pass
 
                     for index, (price_min, price_max) in enumerate(ranges, 1):
                         if self._stop_flag:
@@ -293,6 +302,7 @@ class App(tk.Tk):
                             rows,
                             log=self._log,
                             manual_fix_handler=self._manual_fix_handler,
+                            output_writer=output_writer,
                         )
                 finally:
                     context.close()
@@ -304,7 +314,11 @@ class App(tk.Tk):
             exit_code = 1
 
         try:
-            csv_path, json_path, domains_path, import_csv_path = save_outputs(rows, args)
+            if output_writer:
+                csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
+            else:
+                output_writer = IncrementalOutputWriter(args)
+                csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
             self._log("\n[完成] 已保存结果")
             self._log(f"[记录] {len(rows)} 条")
             self._log(f"[CSV] {csv_path}")
