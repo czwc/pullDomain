@@ -378,7 +378,9 @@ class App(tk.Tk):
                             log=self._log,
                             manual_fix_handler=self._manual_fix_handler,
                             output_writer=output_writer,
+                            should_stop=lambda: self._stop_flag,
                         )
+
                 finally:
                     context.close()
         except KeyboardInterrupt:

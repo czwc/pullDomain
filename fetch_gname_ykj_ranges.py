@@ -552,11 +552,15 @@ def fetch_with_retry(
     retry_limit: int,
     retry_delay: float,
     manual_fix_handler: Callable[[int | None], None] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> Any:
     attempts = 0
     while True:
+        if should_stop and should_stop():
+            raise KeyboardInterrupt
         try:
             result = fetch_page(page, endpoint, payload)
+
         except Exception as exc:
             attempts += 1
             message = str(exc)
@@ -571,8 +575,13 @@ def fetch_with_retry(
                 except Exception:
                     pass
             print(f"[重试] {retry_delay:.1f} 秒后重试当前页...")
+            if should_stop and should_stop():
+                raise KeyboardInterrupt
             time.sleep(retry_delay)
+            if should_stop and should_stop():
+                raise KeyboardInterrupt
             continue
+
 
         code = result.get("code") if isinstance(result, dict) else None
         if code in (-1001, -105001):
@@ -590,10 +599,15 @@ def fetch_with_retry(
             if attempts > retry_limit:
                 return result
             print(f"[重试] {retry_delay:.1f} 秒后重试当前页...")
+            if should_stop and should_stop():
+                raise KeyboardInterrupt
             time.sleep(retry_delay)
+            if should_stop and should_stop():
+                raise KeyboardInterrupt
             continue
 
         return result
+
 
 
 def launch_context(pw: Any, args: argparse.Namespace) -> Any:
@@ -632,14 +646,19 @@ def fetch_range_pages(
     log: Callable[[str], None] = print,
     manual_fix_handler: Callable[[int | None], None] | None = None,
     output_writer: IncrementalOutputWriter | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ) -> int:
+
     page_no = 1
     seen_pages: set[tuple[str, ...]] = set()
     returned_total = 0
     count_total: int | None = None
 
     while True:
+        if should_stop and should_stop():
+            raise KeyboardInterrupt
         payload = build_payload(
+
             args,
             extra_params,
             fbsj_params,
@@ -654,9 +673,13 @@ def fetch_range_pages(
             args.retries,
             args.retry_delay,
             manual_fix_handler,
+            should_stop,
         )
 
+        if should_stop and should_stop():
+            raise KeyboardInterrupt
         items = extract_list(result)
+
         if count_total is None:
             count_total = extract_count(result)
             if count_total is not None:
@@ -697,7 +720,10 @@ def fetch_range_pages(
             break
 
         page_no += 1
+        if should_stop and should_stop():
+            raise KeyboardInterrupt
         time.sleep(random.uniform(args.delay_min, args.delay_max))
+
 
     return returned_total
 

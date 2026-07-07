@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gname 一口价数据获取</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --primary:#2563eb; --primary-dark:#1d4ed8; --bg:#eef3fb; --card:#fff;
+      --text:#0f172a; --muted:#64748b; --border:#dbe3ef; --soft:#f8fafc;
+      --ok:#16a34a; --danger:#dc2626; --warning:#f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin:0;
+      font-family: "Microsoft YaHei UI", "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(37,99,235,.18), transparent 34%),
+        linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
+      color:var(--text);
+    }
+    .wrap { max-width: 1760px; margin: 0 auto; padding: 22px 30px; }
+
+    header {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;
+      padding:20px 22px; border:1px solid rgba(219,227,239,.85); border-radius:22px;
+      background:rgba(255,255,255,.78); backdrop-filter: blur(10px);
+      box-shadow:0 14px 40px rgba(15,23,42,.08);
+    }
+    h1 { font-size:28px; margin:0 0 6px; letter-spacing:.2px; }
+    .sub { color:var(--muted); font-size:14px; }
+    .status { padding:10px 18px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-weight:700; min-width:112px; text-align:center; }
+    .grid { display:grid; grid-template-columns: minmax(720px, 1.15fr) minmax(560px, .85fr); gap:18px; align-items:start; }
+
+    .card { background:rgba(255,255,255,.94); border:1px solid var(--border); border-radius:22px; box-shadow:0 14px 40px rgba(15,23,42,.08); overflow:hidden; }
+    .card h2 { margin:0; padding:17px 20px; font-size:17px; border-bottom:1px solid var(--border); background:linear-gradient(180deg,#fff,#f8fbff); }
+    .body { padding:20px; }
+    .section-title { display:flex; align-items:center; gap:8px; margin:20px 0 12px; font-size:16px; font-weight:800; }
+    .section-title:first-child { margin-top:0; }
+    .section-title::before { content:""; width:4px; height:18px; border-radius:8px; background:var(--primary); }
+    label { display:block; font-size:14px; color:#334155; margin-bottom:8px; font-weight:700; }
+    input[type="text"], input[type="number"], input:not([type]), textarea {
+      width:100%; min-height:48px; border:1px solid var(--border); border-radius:14px;
+      padding:12px 14px; font-size:15px; outline:none; background:#fff; color:var(--text);
+      transition:border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+    }
+    textarea { min-height:64px; resize:vertical; line-height:1.45; font-family:inherit; }
+
+    input:focus, textarea:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(37,99,235,.13); }
+    .row { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; margin-bottom:14px; }
+
+    .field { margin-bottom:14px; }
+    .checks { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; }
+    .checks label { display:flex; gap:9px; align-items:center; margin:0; color:var(--text); padding:12px; border:1px solid var(--border); border-radius:14px; background:var(--soft); cursor:pointer; }
+    .checks input { width:18px; height:18px; accent-color:var(--primary); }
+    .btns { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; }
+    .top-actions { position:sticky; top:0; z-index:10; margin-bottom:18px; padding:12px; background:rgba(255,255,255,.9); backdrop-filter:blur(10px); border:1px solid var(--border); border-radius:20px; box-shadow:0 12px 30px rgba(15,23,42,.08); }
+
+
+    button { border:0; border-radius:14px; padding:13px 16px; font-size:15px; cursor:pointer; font-weight:800; transition:transform .12s ease, box-shadow .12s ease, opacity .12s ease; }
+    button:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 10px 22px rgba(15,23,42,.14); }
+    .primary { background:linear-gradient(135deg,var(--primary),#38bdf8); color:#fff; }
+    .secondary { background:#e8eef7; color:#0f172a; }
+    .danger { background:linear-gradient(135deg,var(--danger),#fb7185); color:#fff; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .hint { color:var(--muted); font-size:12px; margin-top:6px; }
+    .log { height:calc(100vh - 156px); min-height:560px; background:#0b1220; color:#d7e7ff; border-radius:0 0 22px 22px; padding:18px; overflow:auto; font-family: Consolas, "Courier New", monospace; font-size:14px; line-height:1.65; white-space:pre-wrap; }
+
+    .files { display:grid; gap:10px; margin-top:16px; }
+    .file { background:#f8fafc; border:1px solid var(--border); border-radius:14px; padding:12px 14px; word-break:break-all; font-size:13px; line-height:1.5; }
+    .formula { background:linear-gradient(135deg,#eff6ff,#ecfeff); border:1px solid #bfdbfe; color:#1e40af; padding:13px 14px; border-radius:14px; font-size:14px; margin-bottom:14px; line-height:1.55; }
+    @media (max-width: 1280px) { .grid { grid-template-columns: 1fr; } .log { height:480px; min-height:420px; } }
+    @media (max-width: 980px) { .row, .btns { grid-template-columns:1fr 1fr; } }
+    @media (max-width: 680px) { .wrap { padding:14px; } header { align-items:flex-start; flex-direction:column; gap:12px; } .row, .btns, .checks { grid-template-columns:1fr; } }
+
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>gname 一口价数据获取</h1>
+        <div class="sub">本地网页工具 · 自动打开浏览器 · 实时日志 · 按日期文件夹导出</div>
+      </div>
+      <div class="status" id="status">就绪</div>
+    </header>
+
+
+    <div class="grid">
+      <section class="card">
+        <h2>参数设置</h2>
+        <div class="body">
+          <div class="top-actions btns">
+            <button class="primary" id="startBtn" onclick="startTask()">启动浏览器</button>
+            <button class="secondary" onclick="readyTask()">登录/验证完成，开始获取</button>
+            <button class="secondary" onclick="continueTask()">验证完成，继续</button>
+            <button class="danger" onclick="stopTask()">停止</button>
+          </div>
+
+          <div class="section-title">采集参数</div>
+
+          <div class="row">
+            <div><label>后缀 ymhz</label><input id="ymhz" value="com,cc,net"></div>
+            <div><label>注册年份 zcsj_2</label><input id="zcsj_2" value="2026"></div>
+            <div><label>到期天数 dqsj_1</label><input id="dqsj_1" value="30"></div>
+          </div>
+          <div class="row">
+            <div><label>交易类型 jylx</label><input id="jylx" value="nei"></div>
+            <div><label>发布时间天数</label><input id="fbsj_days" value="2"><div class="hint">2=今天和昨天，留空=全部</div></div>
+            <div><label>每页数量</label><input id="pagesize" value="500"><div class="hint">最大 500</div></div>
+          </div>
+
+          <div class="field">
+            <label>价格区间</label>
+            <textarea id="ranges">0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100</textarea>
+
+            <div class="hint">用户可自行删减</div>
+          </div>
+          <div class="field"><label>额外参数</label><input id="extra" placeholder="key=value&key2=value2"></div>
+          <div class="field"><label>输出目录</label><input id="output_dir" value=""></div>
+
+          <div class="section-title">过滤和定价</div>
+
+          <div class="formula">导出价 = 真实价格 ÷ 价格除数 × 价格倍率，非整数向上取整，低于最低价按最低价</div>
+          <div class="row">
+            <div><label>注册天数大于</label><input id="min_register_days" value="60"><div class="hint">0=不过滤</div></div>
+            <div><label>最低导出价</label><input id="import_min_price" value="80"></div>
+          </div>
+          <div class="row">
+            <div><label>价格除数</label><input id="import_price_divisor" value="0.6"></div>
+            <div><label>价格倍率</label><input id="import_price_multiplier" value="1.4"></div>
+          </div>
+
+          <div class="section-title">导出文件</div>
+
+          <div class="checks">
+            <label><input id="export_csv" type="checkbox" checked> 主CSV</label>
+            <label><input id="export_json" type="checkbox"> JSON</label>
+            <label><input id="export_import_csv" type="checkbox" checked> 0612格式CSV</label>
+          </div>
+
+          <div class="files" id="files"></div>
+
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>实时日志</h2>
+        <div class="log" id="log"></div>
+      </section>
+    </div>
+  </div>
+
+<script>
+const $ = id => document.getElementById(id);
+let lastLog = "";
+$('output_dir').value = localStorage.getItem('output_dir') || '';
+
+function payload() {
+  return {
+    ymhz: $('ymhz').value,
+    zcsj_2: $('zcsj_2').value,
+    dqsj_1: $('dqsj_1').value,
+    jylx: $('jylx').value,
+    fbsj_days: $('fbsj_days').value,
+    ranges: $('ranges').value,
+    extra: $('extra').value,
+    output_dir: $('output_dir').value,
+    pagesize: $('pagesize').value,
+    min_register_days: $('min_register_days').value,
+    import_price_divisor: $('import_price_divisor').value,
+    import_price_multiplier: $('import_price_multiplier').value,
+    import_min_price: $('import_min_price').value,
+    export_csv: $('export_csv').checked,
+    export_json: $('export_json').checked,
+    export_import_csv: $('export_import_csv').checked
+  };
+}
+
+async function post(url, body) {
+  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : '{}' });
+  if (!res.ok) {
+    let msg = await res.text();
+    try { msg = JSON.parse(msg).detail || msg; } catch(e) {}
+    alert(msg);
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function startTask() {
+  const data = payload();
+  localStorage.setItem('output_dir', data.output_dir || '');
+  await post('/api/start', data);
+}
+async function readyTask() { await post('/api/ready'); }
+async function continueTask() { await post('/api/continue'); }
+async function stopTask() { await post('/api/stop'); }
+
+function renderFiles(paths) {
+  const box = $('files');
+  const items = [];
+  if (paths.csv) items.push(['CSV', paths.csv]);
+  if (paths.json) items.push(['JSON', paths.json]);
+  if (paths.import_csv) items.push(['0612格式CSV', paths.import_csv]);
+  box.innerHTML = items.map(([k,v]) => `<div class="file"><b>${k}</b><br>${v}</div>`).join('');
+}
+
+async function poll() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    $('status').textContent = data.status || '就绪';
+    $('startBtn').disabled = !!data.running;
+    const text = (data.logs || []).join('\n');
+    if (text !== lastLog) {
+      $('log').textContent = text;
+      $('log').scrollTop = $('log').scrollHeight;
+      lastLog = text;
+    }
+    renderFiles(data.paths || {});
+  } catch(e) {}
+  setTimeout(poll, 1000);
+}
+poll();
+</script>
+</body>
+</html>
