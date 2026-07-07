@@ -366,19 +366,26 @@ def import_csv_row(row: dict[str, Any], args: argparse.Namespace) -> dict[str, A
     }
 
 
+def output_day_dir(output_dir: str) -> str:
+    return os.path.join(output_dir, datetime.now().strftime("%Y%m%d"))
+
+
 class IncrementalOutputWriter:
     def __init__(self, args: argparse.Namespace) -> None:
-        os.makedirs(args.output_dir, exist_ok=True)
+        output_dir = output_day_dir(args.output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = f"{args.output_prefix}_{timestamp}"
+
         self.args = args
         self.write_csv = bool(args.export_csv)
         self.write_json = bool(args.export_json)
         self.write_import_csv = bool(args.export_import_csv)
-        self.csv_path = os.path.join(args.output_dir, f"{prefix}.csv") if self.write_csv else ""
-        self.json_path = os.path.join(args.output_dir, f"{prefix}_full.json") if self.write_json else ""
-        self.jsonl_path = os.path.join(args.output_dir, f"{prefix}_full.jsonl") if self.write_json else ""
-        self.import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv") if self.write_import_csv else ""
+        self.csv_path = os.path.join(output_dir, f"{prefix}.csv") if self.write_csv else ""
+        self.json_path = os.path.join(output_dir, f"{prefix}_full.json") if self.write_json else ""
+        self.jsonl_path = os.path.join(output_dir, f"{prefix}_full.jsonl") if self.write_json else ""
+        self.import_csv_path = os.path.join(output_dir, f"{prefix}_0612_format.csv") if self.write_import_csv else ""
+
 
         self._csv_file = open(self.csv_path, "w", encoding="utf-8-sig", newline="") if self.write_csv else None
         self._jsonl_file = open(self.jsonl_path, "w", encoding="utf-8") if self.write_json else None
@@ -696,13 +703,15 @@ def fetch_range_pages(
 
 
 def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, str]:
-    os.makedirs(args.output_dir, exist_ok=True)
+    output_dir = output_day_dir(args.output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     prefix = f"{args.output_prefix}_{timestamp}"
     paths = {"csv": "", "json": "", "import_csv": ""}
 
     if args.export_csv:
-        paths["csv"] = os.path.join(args.output_dir, f"{prefix}.csv")
+        paths["csv"] = os.path.join(output_dir, f"{prefix}.csv")
+
         with open(paths["csv"], "w", encoding="utf-8-sig", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
             writer.writeheader()
@@ -710,12 +719,14 @@ def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[s
                 writer.writerow(csv_row(row))
 
     if args.export_json:
-        paths["json"] = os.path.join(args.output_dir, f"{prefix}_full.json")
+        paths["json"] = os.path.join(output_dir, f"{prefix}_full.json")
+
         with open(paths["json"], "w", encoding="utf-8") as file:
             json.dump(rows, file, ensure_ascii=False, indent=2)
 
     if args.export_import_csv:
-        paths["import_csv"] = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
+        paths["import_csv"] = os.path.join(output_dir, f"{prefix}_0612_format.csv")
+
         with open(paths["import_csv"], "w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=IMPORT_FIELDS)
             writer.writeheader()
