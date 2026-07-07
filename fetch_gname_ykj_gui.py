@@ -7,7 +7,10 @@ import argparse
 import os
 import threading
 import tkinter as tk
-from decimal import Decimal
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from fetch_gname_ykj_ranges import (
@@ -28,8 +31,9 @@ class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("gname 一口价数据获取")
-        self.minsize(860, 680)
-        self._center(900, 720)
+        self.minsize(920, 780)
+        self._center(980, 820)
+
 
         self._ready_event = threading.Event()
         self._continue_event = threading.Event()
@@ -65,21 +69,31 @@ class App(tk.Tk):
         form.pack(fill="x", pady=(12, 8))
 
         self.ymhz_var = tk.StringVar(value="com,cc,net")
-        self.zcsj2_var = tk.StringVar(value="2025")
+        self.zcsj2_var = tk.StringVar(value="2026")
         self.dqsj1_var = tk.StringVar(value="30")
         self.jylx_var = tk.StringVar(value="nei")
-        self.days_var = tk.StringVar(value="")
-        self.ranges_var = tk.StringVar(value="")
+        self.days_var = tk.StringVar(value="2")
+        self.ranges_var = tk.StringVar(value="0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100")
         self.output_dir_var = tk.StringVar(value=os.getcwd())
         self.extra_var = tk.StringVar(value="")
         self.pagesize_var = tk.StringVar(value="500")
+        self.min_register_days_var = tk.StringVar(value="60")
+        self.import_price_divisor_var = tk.StringVar(value="0.6")
+        self.import_price_multiplier_var = tk.StringVar(value="1.4")
+        self.import_min_price_var = tk.StringVar(value="80")
+        self.export_csv_var = tk.BooleanVar(value=True)
+        self.export_json_var = tk.BooleanVar(value=False)
+        self.export_import_csv_var = tk.BooleanVar(value=True)
+
 
         self._row(form, 0, "后缀 ymhz", self.ymhz_var, "com,cc,net")
-        self._row(form, 1, "注册年份 zcsj_2", self.zcsj2_var, "2025")
+
+        self._row(form, 1, "注册年份 zcsj_2", self.zcsj2_var, "默认 2026")
         self._row(form, 2, "到期天数 dqsj_1", self.dqsj1_var, "30")
         self._row(form, 3, "交易类型 jylx", self.jylx_var, "nei")
-        self._row(form, 4, "发布时间天数", self.days_var, "留空=全部；输入 2=今天和昨天")
-        self._row(form, 5, "价格区间", self.ranges_var, "留空=0-20,20.01-30...90.01-100")
+        self._row(form, 4, "发布时间天数", self.days_var, "默认 2=今天和昨天；留空=全部")
+        self._row(form, 5, "价格区间", self.ranges_var, "可自行删减")
+
         self._row(form, 6, "额外参数", self.extra_var, "key=value&key2=value2")
 
         ttk.Label(form, text="输出目录").grid(row=7, column=0, sticky="w", pady=5)
@@ -90,7 +104,21 @@ class App(tk.Tk):
         ttk.Entry(form, textvariable=self.pagesize_var).grid(row=8, column=1, sticky="ew", pady=5, padx=8)
         ttk.Label(form, text="最大 500").grid(row=8, column=2, sticky="w")
 
+        self._row(form, 9, "注册天数大于", self.min_register_days_var, "0=不过滤；默认 60")
+        self._row(form, 10, "价格除数", self.import_price_divisor_var, "导出价=真实价格÷除数×倍率")
+        self._row(form, 11, "价格倍率", self.import_price_multiplier_var, "默认 1.4")
+        self._row(form, 12, "最低导出价", self.import_min_price_var, "默认 80")
+
+        export_frame = ttk.Frame(form)
+        export_frame.grid(row=13, column=1, sticky="w", pady=5, padx=8)
+        ttk.Label(form, text="导出文件").grid(row=13, column=0, sticky="w", pady=5)
+        ttk.Checkbutton(export_frame, text="主CSV", variable=self.export_csv_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(export_frame, text="JSON", variable=self.export_json_var).pack(side="left", padx=(0, 12))
+        ttk.Checkbutton(export_frame, text="0612格式CSV", variable=self.export_import_csv_var).pack(side="left")
+        ttk.Label(form, text="至少勾选一个").grid(row=13, column=2, sticky="w")
+
         form.columnconfigure(1, weight=1)
+
 
         actions = ttk.Frame(root)
         actions.pack(fill="x", pady=(4, 8))
@@ -123,12 +151,14 @@ class App(tk.Tk):
 
     def _log(self, message: str) -> None:
         def write() -> None:
+            timestamp = datetime.now().strftime("%H:%M:%S")
             self.log.configure(state="normal")
-            self.log.insert("end", message + "\n")
+            self.log.insert("end", f"[{timestamp}] {message}\n")
             self.log.see("end")
             self.log.configure(state="disabled")
 
         self.after(0, write)
+
 
     def _set_status(self, message: str) -> None:
         self.after(0, lambda: self.status_var.set(message))
@@ -198,7 +228,34 @@ class App(tk.Tk):
             if fbsj_days < 1:
                 raise ValueError("发布时间天数必须大于 0，或留空")
 
+        try:
+            min_register_days = int(self.min_register_days_var.get().strip() or "60")
+        except ValueError as exc:
+            raise ValueError("注册天数必须是数字") from exc
+        if min_register_days < 0:
+            raise ValueError("注册天数不能小于 0")
+
+        try:
+            import_price_divisor = Decimal(self.import_price_divisor_var.get().strip() or "0.6")
+            import_price_multiplier = Decimal(self.import_price_multiplier_var.get().strip() or "1.4")
+            import_min_price = Decimal(self.import_min_price_var.get().strip() or "80")
+        except InvalidOperation as exc:
+            raise ValueError("价格公式参数必须是数字") from exc
+        if import_price_divisor <= 0:
+            raise ValueError("价格除数必须大于 0")
+        if import_price_multiplier <= 0:
+            raise ValueError("价格倍率必须大于 0")
+        if import_min_price < 0:
+            raise ValueError("最低导出价不能小于 0")
+
+        export_csv = self.export_csv_var.get()
+        export_json = self.export_json_var.get()
+        export_import_csv = self.export_import_csv_var.get()
+        if not any((export_csv, export_json, export_import_csv)):
+            raise ValueError("至少需要勾选一种导出文件")
+
         return argparse.Namespace(
+
             sales_url=SALES_URL,
             endpoint=API_PATH,
             profile_dir=DEFAULT_PROFILE_DIR,
@@ -231,7 +288,15 @@ class App(tk.Tk):
             retry_delay=3.0,
             output_dir=self.output_dir_var.get().strip() or ".",
             output_prefix="gname_ykj_ranges",
+            min_register_days=min_register_days,
+            import_price_divisor=import_price_divisor,
+            import_price_multiplier=import_price_multiplier,
+            import_min_price=import_min_price,
+            export_csv=export_csv,
+            export_json=export_json,
+            export_import_csv=export_import_csv,
         )
+
 
     def _manual_fix_handler(self, code: int | None) -> None:
         if code == -1001:
@@ -265,9 +330,19 @@ class App(tk.Tk):
             self._log("[配置] 价格区间: " + ", ".join(f"{money(a)}-{money(b)}" for a, b in ranges))
             self._log(f"[配置] 后缀: {args.ymhz}")
             self._log(f"[配置] 每页数量: {args.pagesize}")
+            self._log(f"[配置] 注册天数大于: {args.min_register_days}")
+
+            self._log(
+                f"[配置] 0612导出价: 真实价格 / {args.import_price_divisor} * {args.import_price_multiplier}，最低 {args.import_min_price}"
+            )
             self._log("[配置] 发布时间: " + ("&".join(f"{k}={v}" for k, v in fbsj_params.items()) if fbsj_params else "全部"))
-            self._log(f"[保存] CSV: {output_writer.csv_path}")
-            self._log(f"[保存] JSONL: {output_writer.jsonl_path}")
+            if output_writer.csv_path:
+                self._log(f"[保存] CSV: {output_writer.csv_path}")
+            if output_writer.jsonl_path:
+                self._log(f"[保存] JSONL: {output_writer.jsonl_path}")
+            if output_writer.import_csv_path:
+                self._log(f"[保存] 0612格式CSV: {output_writer.import_csv_path}")
+
 
             with sync_playwright() as pw:
                 context = launch_context(pw, args)
@@ -315,16 +390,20 @@ class App(tk.Tk):
 
         try:
             if output_writer:
-                csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
+                paths = output_writer.finalize()
             else:
                 output_writer = IncrementalOutputWriter(args)
-                csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
+                paths = output_writer.finalize()
             self._log("\n[完成] 已保存结果")
             self._log(f"[记录] {len(rows)} 条")
-            self._log(f"[CSV] {csv_path}")
-            self._log(f"[JSON] {json_path}")
-            self._log(f"[域名] {domains_path}")
-            self._log(f"[0612格式CSV] {import_csv_path}")
+            if paths.get("csv"):
+                self._log(f"[CSV] {paths['csv']}")
+            if paths.get("json"):
+                self._log(f"[JSON] {paths['json']}")
+            if paths.get("import_csv"):
+                self._log(f"[0612格式CSV] {paths['import_csv']}")
+
+
         except Exception as exc:
             self._log(f"[错误] 保存失败: {exc}")
             exit_code = 1

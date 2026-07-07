@@ -80,15 +80,49 @@ def money(value: Decimal) -> str:
     return text or "0"
 
 
-def import_price_for_range(range_max: str) -> str:
-    high = Decimal(str(range_max))
-    if high <= Decimal("20"):
-        return "80"
-    steps = ((high - Decimal("20")) / Decimal("10")).to_integral_value(rounding=ROUND_CEILING)
-    return str(80 + int(steps) * 20)
+def import_price_for_row(row: dict[str, Any], args: argparse.Namespace) -> str:
+    price_text = str(row.get("price", "")).replace(",", "").strip()
+    price_text = re.sub(r"[^0-9.]", "", price_text)
+    try:
+        source_price = Decimal(price_text)
+    except InvalidOperation:
+        source_price = Decimal("0")
+
+    import_price = (
+        source_price / args.import_price_divisor * args.import_price_multiplier
+    ).to_integral_value(rounding=ROUND_CEILING)
+    if import_price < args.import_min_price:
+        return money(args.import_min_price)
+    return str(import_price)
+
+
+
+def parse_item_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    match = re.search(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", text)
+    if not match:
+        return None
+    date_text = match.group(0).replace("/", "-")
+    try:
+        return date.fromisoformat(date_text)
+    except ValueError:
+        return None
+
+
+def is_registered_over_days(item: dict[str, Any], min_days: int) -> bool:
+    if min_days <= 0:
+        return True
+    registered_at = parse_item_date(item.get("zcsj"))
+    if registered_at is None:
+        return False
+    return (date.today() - registered_at).days > min_days
+
 
 
 def parse_decimal(value: str, name: str) -> Decimal:
+
     try:
         return Decimal(str(value))
     except InvalidOperation as exc:
@@ -210,7 +244,9 @@ def parse_items(
     price_min: Decimal,
     price_max: Decimal,
     page_no: int,
+    min_register_days: int,
 ) -> list[dict[str, Any]]:
+
     parsed: list[dict[str, Any]] = []
     for item in items:
         domain = (
@@ -232,10 +268,11 @@ def parse_items(
             or ""
         )
         currency = item.get("currency") or item.get("currency_type") or "CNY"
-        if not domain:
+        if not domain or not is_registered_over_days(item, min_register_days):
             continue
         parsed.append(
             {
+
                 "domain": str(domain),
                 "price": str(price),
                 "currency": str(currency),
@@ -311,10 +348,11 @@ def csv_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def import_csv_row(row: dict[str, Any]) -> dict[str, Any]:
-    import_price = import_price_for_range(str(row.get("range_max", "0")))
+def import_csv_row(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    import_price = import_price_for_row(row, args)
     return {
         "Domain": row.get("domain", ""),
+
         "Buy Now Price": import_price,
         "Floor Price": "",
         "Min Offer": import_price,
@@ -333,58 +371,76 @@ class IncrementalOutputWriter:
         os.makedirs(args.output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         prefix = f"{args.output_prefix}_{timestamp}"
+        self.args = args
+        self.write_csv = bool(args.export_csv)
+        self.write_json = bool(args.export_json)
+        self.write_import_csv = bool(args.export_import_csv)
+        self.csv_path = os.path.join(args.output_dir, f"{prefix}.csv") if self.write_csv else ""
+        self.json_path = os.path.join(args.output_dir, f"{prefix}_full.json") if self.write_json else ""
+        self.jsonl_path = os.path.join(args.output_dir, f"{prefix}_full.jsonl") if self.write_json else ""
+        self.import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv") if self.write_import_csv else ""
 
-        self.csv_path = os.path.join(args.output_dir, f"{prefix}.csv")
-        self.json_path = os.path.join(args.output_dir, f"{prefix}_full.json")
-        self.jsonl_path = os.path.join(args.output_dir, f"{prefix}_full.jsonl")
-        self.domains_path = os.path.join(args.output_dir, f"{prefix}_domains.txt")
-        self.import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
+        self._csv_file = open(self.csv_path, "w", encoding="utf-8-sig", newline="") if self.write_csv else None
+        self._jsonl_file = open(self.jsonl_path, "w", encoding="utf-8") if self.write_json else None
+        self._import_csv_file = open(self.import_csv_path, "w", encoding="utf-8", newline="") if self.write_import_csv else None
 
-        self._csv_file = open(self.csv_path, "w", encoding="utf-8-sig", newline="")
-        self._jsonl_file = open(self.jsonl_path, "w", encoding="utf-8")
-        self._domains_file = open(self.domains_path, "w", encoding="utf-8")
-        self._import_csv_file = open(self.import_csv_path, "w", encoding="utf-8", newline="")
-
-        self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=CSV_FIELDS)
-        self._csv_writer.writeheader()
-        self._import_csv_writer = csv.DictWriter(self._import_csv_file, fieldnames=IMPORT_FIELDS)
-        self._import_csv_writer.writeheader()
+        self._csv_writer = csv.DictWriter(self._csv_file, fieldnames=CSV_FIELDS) if self._csv_file else None
+        if self._csv_writer:
+            self._csv_writer.writeheader()
+        self._import_csv_writer = csv.DictWriter(self._import_csv_file, fieldnames=IMPORT_FIELDS) if self._import_csv_file else None
+        if self._import_csv_writer:
+            self._import_csv_writer.writeheader()
         self.count = 0
         self._closed = False
+
 
     def append_rows(self, rows: list[dict[str, Any]]) -> None:
         if not rows:
             return
         for row in rows:
-            self._csv_writer.writerow(csv_row(row))
-            self._jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
-            self._domains_file.write(f"{row['domain']}\n")
-            self._import_csv_writer.writerow(import_csv_row(row))
+            if self._csv_writer:
+                self._csv_writer.writerow(csv_row(row))
+            if self._jsonl_file:
+                self._jsonl_file.write(json.dumps(row, ensure_ascii=False) + "\n")
+            if self._import_csv_writer:
+                self._import_csv_writer.writerow(import_csv_row(row, self.args))
             self.count += 1
         self.flush()
 
     def flush(self) -> None:
-        self._csv_file.flush()
-        self._jsonl_file.flush()
-        self._domains_file.flush()
-        self._import_csv_file.flush()
+        if self._csv_file:
+            self._csv_file.flush()
+        if self._jsonl_file:
+            self._jsonl_file.flush()
+        if self._import_csv_file:
+            self._import_csv_file.flush()
 
     def close(self) -> None:
         if self._closed:
             return
-        self._csv_file.close()
-        self._jsonl_file.close()
-        self._domains_file.close()
-        self._import_csv_file.close()
+        if self._csv_file:
+            self._csv_file.close()
+        if self._jsonl_file:
+            self._jsonl_file.close()
+        if self._import_csv_file:
+            self._import_csv_file.close()
         self._closed = True
 
-    def finalize(self) -> tuple[str, str, str, str]:
+    def finalize(self) -> dict[str, str]:
         self.close()
-        with open(self.jsonl_path, "r", encoding="utf-8") as source:
-            rows = [json.loads(line) for line in source if line.strip()]
-        with open(self.json_path, "w", encoding="utf-8") as target:
-            json.dump(rows, target, ensure_ascii=False, indent=2)
-        return self.csv_path, self.json_path, self.domains_path, self.import_csv_path
+        if self.write_json and self.jsonl_path:
+            with open(self.jsonl_path, "r", encoding="utf-8") as source:
+                rows = [json.loads(line) for line in source if line.strip()]
+            with open(self.json_path, "w", encoding="utf-8") as target:
+                json.dump(rows, target, ensure_ascii=False, indent=2)
+        return {
+            "csv": self.csv_path,
+            "json": self.json_path,
+            "jsonl": self.jsonl_path,
+            "import_csv": self.import_csv_path,
+        }
+
+
 
 
 def parse_extra_params(extra: str) -> dict[str, str]:
@@ -611,7 +667,8 @@ def fetch_range_pages(
         if signature:
             seen_pages.add(signature)
 
-        rows = parse_items(items, price_min, price_max, page_no)
+        rows = parse_items(items, price_min, price_max, page_no, args.min_register_days)
+
         all_rows.extend(rows)
         if output_writer:
             output_writer.append_rows(rows)
@@ -638,36 +695,36 @@ def fetch_range_pages(
     return returned_total
 
 
-def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> tuple[str, str, str, str]:
+def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, str]:
     os.makedirs(args.output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     prefix = f"{args.output_prefix}_{timestamp}"
+    paths = {"csv": "", "json": "", "import_csv": ""}
 
-    csv_path = os.path.join(args.output_dir, f"{prefix}.csv")
-    json_path = os.path.join(args.output_dir, f"{prefix}_full.json")
-    domains_path = os.path.join(args.output_dir, f"{prefix}_domains.txt")
-    import_csv_path = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
+    if args.export_csv:
+        paths["csv"] = os.path.join(args.output_dir, f"{prefix}.csv")
+        with open(paths["csv"], "w", encoding="utf-8-sig", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(csv_row(row))
 
-    with open(csv_path, "w", encoding="utf-8-sig", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(csv_row(row))
+    if args.export_json:
+        paths["json"] = os.path.join(args.output_dir, f"{prefix}_full.json")
+        with open(paths["json"], "w", encoding="utf-8") as file:
+            json.dump(rows, file, ensure_ascii=False, indent=2)
 
-    with open(json_path, "w", encoding="utf-8") as file:
-        json.dump(rows, file, ensure_ascii=False, indent=2)
+    if args.export_import_csv:
+        paths["import_csv"] = os.path.join(args.output_dir, f"{prefix}_0612_format.csv")
+        with open(paths["import_csv"], "w", encoding="utf-8", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=IMPORT_FIELDS)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow(import_csv_row(row, args))
 
-    with open(domains_path, "w", encoding="utf-8") as file:
-        for row in rows:
-            file.write(f"{row['domain']}\n")
+    return paths
 
-    with open(import_csv_path, "w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=IMPORT_FIELDS)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(import_csv_row(row))
 
-    return csv_path, json_path, domains_path, import_csv_path
 
 
 def run(args: argparse.Namespace) -> int:
@@ -742,14 +799,18 @@ def run(args: argparse.Namespace) -> int:
         print("[提示] 正在保存已抓取数据...")
         exit_code = 1
 
-    csv_path, json_path, domains_path, import_csv_path = output_writer.finalize()
+    paths = output_writer.finalize()
     print("\n[完成] 拉取结束")
     print(f"[结果] 总计 {len(all_rows)} 条记录")
-    print(f"[CSV]  {csv_path}")
-    print(f"[JSON] {json_path}")
-    print(f"[域名] {domains_path}")
-    print(f"[0612格式CSV] {import_csv_path}")
+    if paths.get("csv"):
+        print(f"[CSV]  {paths['csv']}")
+    if paths.get("json"):
+        print(f"[JSON] {paths['json']}")
+    if paths.get("import_csv"):
+        print(f"[0612格式CSV] {paths['import_csv']}")
     return exit_code
+
+
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -833,7 +894,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--output-dir", default=".")
     parser.add_argument("--output-prefix", default="gname_ykj_ranges")
+    parser.add_argument("--min-register-days", type=int, default=60)
+    parser.add_argument("--import-price-divisor", type=lambda v: parse_decimal(v, "import-price-divisor"), default=Decimal("0.6"))
+    parser.add_argument("--import-price-multiplier", type=lambda v: parse_decimal(v, "import-price-multiplier"), default=Decimal("1.4"))
+    parser.add_argument("--import-min-price", type=lambda v: parse_decimal(v, "import-min-price"), default=Decimal("80"))
+    parser.add_argument("--export-csv", action="store_true", default=True)
+    parser.add_argument("--export-json", action="store_true", default=True)
+    parser.add_argument("--export-import-csv", action="store_true", default=True)
     return parser
+
 
 
 def main() -> int:
@@ -849,8 +918,24 @@ def main() -> int:
     if args.delay_min < 0 or args.delay_max < args.delay_min:
         print("[错误] delay 参数不合法")
         return 1
+    if args.min_register_days < 0:
+        print("[错误] min-register-days 不能小于 0")
+        return 1
+    if args.import_price_divisor <= 0:
+        print("[错误] import-price-divisor 必须大于 0")
+        return 1
+    if args.import_price_multiplier <= 0:
+        print("[错误] import-price-multiplier 必须大于 0")
+        return 1
+    if args.import_min_price < 0:
+        print("[错误] import-min-price 不能小于 0")
+        return 1
+    if not any((args.export_csv, args.export_json, args.export_import_csv)):
+        print("[错误] 至少需要启用一种导出文件")
+        return 1
 
     try:
+
         return run(args)
     except KeyboardInterrupt:
         print("\n[中止] 用户取消")
