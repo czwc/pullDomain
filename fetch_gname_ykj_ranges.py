@@ -374,17 +374,21 @@ class IncrementalOutputWriter:
     def __init__(self, args: argparse.Namespace) -> None:
         output_dir = output_day_dir(args.output_dir)
         os.makedirs(output_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        import_csv_name = now.strftime("%m%d%H%M.csv")
         prefix = f"{args.output_prefix}_{timestamp}"
 
         self.args = args
+
         self.write_csv = bool(args.export_csv)
         self.write_json = bool(args.export_json)
         self.write_import_csv = bool(args.export_import_csv)
         self.csv_path = os.path.join(output_dir, f"{prefix}.csv") if self.write_csv else ""
         self.json_path = os.path.join(output_dir, f"{prefix}_full.json") if self.write_json else ""
         self.jsonl_path = os.path.join(output_dir, f"{prefix}_full.jsonl") if self.write_json else ""
-        self.import_csv_path = os.path.join(output_dir, f"{prefix}_0612_format.csv") if self.write_import_csv else ""
+        self.import_csv_path = os.path.join(output_dir, import_csv_name) if self.write_import_csv else ""
+
 
 
         self._csv_file = open(self.csv_path, "w", encoding="utf-8-sig", newline="") if self.write_csv else None
@@ -731,9 +735,12 @@ def fetch_range_pages(
 def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, str]:
     output_dir = output_day_dir(args.output_dir)
     os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    now = datetime.now()
+    timestamp = now.strftime("%Y%m%d_%H%M%S")
+    import_csv_name = now.strftime("%m%d%H%M.csv")
     prefix = f"{args.output_prefix}_{timestamp}"
     paths = {"csv": "", "json": "", "import_csv": ""}
+
 
     if args.export_csv:
         paths["csv"] = os.path.join(output_dir, f"{prefix}.csv")
@@ -751,7 +758,8 @@ def save_outputs(rows: list[dict[str, Any]], args: argparse.Namespace) -> dict[s
             json.dump(rows, file, ensure_ascii=False, indent=2)
 
     if args.export_import_csv:
-        paths["import_csv"] = os.path.join(output_dir, f"{prefix}_0612_format.csv")
+        paths["import_csv"] = os.path.join(output_dir, import_csv_name)
+
 
         with open(paths["import_csv"], "w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(file, fieldnames=IMPORT_FIELDS)
