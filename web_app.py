@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import os
+import subprocess
+import sys
 import threading
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -350,3 +352,32 @@ def stop() -> dict[str, Any]:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     return state.snapshot()
+
+
+class RevealRequest(BaseModel):
+    path: str = ""
+
+
+@app.post("/api/reveal")
+def reveal(data: RevealRequest) -> dict[str, Any]:
+    path = (data.path or "").strip()
+    if not path:
+        raise HTTPException(status_code=400, detail="缺少文件路径")
+
+    abs_path = os.path.abspath(path)
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail=f"文件不存在: {abs_path}")
+
+    try:
+        if sys.platform.startswith("win"):
+            # explorer /select 会打开文件夹并高亮选中该文件
+            subprocess.run(["explorer", "/select,", abs_path])
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", abs_path])
+        else:
+            # Linux 各发行版无统一 select 方案，退而打开所在目录
+            subprocess.run(["xdg-open", os.path.dirname(abs_path)])
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"打开失败: {exc}") from exc
+
+    return {"ok": True}
