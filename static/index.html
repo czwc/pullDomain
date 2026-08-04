@@ -65,6 +65,9 @@
     .danger { background:linear-gradient(135deg,var(--danger),#fb7185); color:#fff; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .hint { color:var(--muted); font-size:12px; margin-top:6px; }
+    .config-row { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+    .config-row button { padding:11px 18px; font-size:14px; }
+    .config-row .hint { margin-top:0; }
     .log { height:calc(100vh - 156px); min-height:560px; background:#0b1220; color:#d7e7ff; border-radius:0 0 22px 22px; padding:18px; overflow:auto; font-family: Consolas, "Courier New", monospace; font-size:14px; line-height:1.65; white-space:pre-wrap; }
 
     .files { display:grid; gap:10px; margin-top:16px; }
@@ -143,6 +146,13 @@
             <label><input id="export_import_csv" type="checkbox" checked> 0612格式CSV</label>
           </div>
 
+          <div class="section-title">参数记忆</div>
+
+          <div class="config-row">
+            <button class="secondary" onclick="resetConfig()">恢复默认参数</button>
+            <span class="hint" id="saveTip">改过的参数会自动记住，下次打开自动填回</span>
+          </div>
+
           <div class="files" id="files"></div>
 
         </div>
@@ -158,28 +168,93 @@
 <script>
 const $ = id => document.getElementById(id);
 let lastLog = "";
-$('output_dir').value = localStorage.getItem('output_dir') || '';
+
+const TEXT_FIELDS = [
+  'ymhz','zcsj_2','dqsj_1','jylx','fbsj_days','pagesize','ranges','extra','output_dir',
+  'min_register_days','import_min_price','import_price_divisor','import_price_multiplier'
+];
+const CHECK_FIELDS = ['export_csv','export_json','export_import_csv'];
 
 function payload() {
-  return {
-    ymhz: $('ymhz').value,
-    zcsj_2: $('zcsj_2').value,
-    dqsj_1: $('dqsj_1').value,
-    jylx: $('jylx').value,
-    fbsj_days: $('fbsj_days').value,
-    ranges: $('ranges').value,
-    extra: $('extra').value,
-    output_dir: $('output_dir').value,
-    pagesize: $('pagesize').value,
-    min_register_days: $('min_register_days').value,
-    import_price_divisor: $('import_price_divisor').value,
-    import_price_multiplier: $('import_price_multiplier').value,
-    import_min_price: $('import_min_price').value,
-    export_csv: $('export_csv').checked,
-    export_json: $('export_json').checked,
-    export_import_csv: $('export_import_csv').checked
-  };
+  const data = {};
+  TEXT_FIELDS.forEach(id => data[id] = $(id).value);
+  CHECK_FIELDS.forEach(id => data[id] = $(id).checked);
+  return data;
 }
+
+// 页面里写死的初始值就是默认值，必须在填回已保存参数之前抓一份
+const DEFAULTS = payload();
+
+function setSaveTip(text) { $('saveTip').textContent = text; }
+
+function applyConfig(cfg) {
+  if (!cfg) return;
+  TEXT_FIELDS.forEach(id => { if (cfg[id] !== undefined && cfg[id] !== null) $(id).value = cfg[id]; });
+  CHECK_FIELDS.forEach(id => { if (cfg[id] !== undefined && cfg[id] !== null) $(id).checked = !!cfg[id]; });
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if (data && data.saved) {
+      applyConfig(data.config);
+      setSaveTip('已填回上次保存的参数');
+      return;
+    }
+  } catch (e) {}
+  // 首次运行：沿用旧版本存在浏览器里的输出目录
+  const legacyDir = localStorage.getItem('output_dir');
+  if (legacyDir) $('output_dir').value = legacyDir;
+}
+
+let saveTimer = null;
+async function saveConfig() {
+  saveTimer = null;
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload())
+    });
+    if (!res.ok) throw new Error('save failed');
+    setSaveTip('已自动保存 ' + new Date().toLocaleTimeString());
+  } catch (e) {
+    setSaveTip('保存失败，本次修改只在当前页面有效');
+  }
+}
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveConfig, 600);
+}
+
+async function resetConfig() {
+  if (!confirm('恢复默认参数？已保存的参数会被清除。')) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  applyConfig(DEFAULTS);
+  localStorage.removeItem('output_dir');
+  try {
+    const res = await fetch('/api/config/reset', { method: 'POST' });
+    if (!res.ok) throw new Error('reset failed');
+    setSaveTip('已恢复默认参数');
+  } catch (e) {
+    setSaveTip('已恢复默认参数，但清除保存文件失败');
+  }
+}
+
+TEXT_FIELDS.concat(CHECK_FIELDS).forEach(id => {
+  $(id).addEventListener('input', scheduleSave);
+  $(id).addEventListener('change', scheduleSave);
+});
+
+// 关页面时把还没到点的那次保存补上
+window.addEventListener('beforeunload', () => {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  const blob = new Blob([JSON.stringify(payload())], { type: 'application/json' });
+  navigator.sendBeacon('/api/config', blob);
+});
 
 async function post(url, body) {
   const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : '{}' });
@@ -193,9 +268,9 @@ async function post(url, body) {
 }
 
 async function startTask() {
-  const data = payload();
-  localStorage.setItem('output_dir', data.output_dir || '');
-  await post('/api/start', data);
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  await post('/api/start', payload());
 }
 async function readyTask() { await post('/api/ready'); }
 async function continueTask() { await post('/api/continue'); }
@@ -240,6 +315,7 @@ async function poll() {
   } catch(e) {}
   setTimeout(poll, 1000);
 }
+loadConfig();
 poll();
 </script>
 </body>

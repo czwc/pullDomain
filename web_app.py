@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -32,6 +33,7 @@ from fetch_gname_ykj_ranges import (
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
+CONFIG_PATH = os.path.join(BASE_DIR, "web_config.json")
 
 app = FastAPI(title="gname 一口价网页工具")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -54,6 +56,49 @@ class StartRequest(BaseModel):
     export_csv: bool = True
     export_json: bool = False
     export_import_csv: bool = True
+
+
+def model_to_dict(model: BaseModel) -> dict[str, Any]:
+    dump = getattr(model, "model_dump", None)
+    if callable(dump):
+        return dump()
+    return model.dict()
+
+
+def read_saved_config() -> dict[str, Any] | None:
+    """读取上次保存的参数；没有保存过或文件损坏时返回 None。"""
+    if not os.path.exists(CONFIG_PATH):
+        return None
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as fp:
+            saved = json.load(fp)
+    except Exception:
+        return None
+    if not isinstance(saved, dict):
+        return None
+
+    # 以当前默认值为骨架，只认识已知字段，旧版本配置文件缺字段也能用
+    merged = model_to_dict(StartRequest())
+    for key, default_value in merged.items():
+        if key not in saved:
+            continue
+        value = saved[key]
+        if isinstance(default_value, bool):
+            if isinstance(value, bool):
+                merged[key] = value
+            else:
+                merged[key] = str(value).strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            merged[key] = "" if value is None else str(value)
+    return merged
+
+
+def write_saved_config(data: StartRequest) -> None:
+    """先写临时文件再替换，避免中途出错把配置写坏。"""
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as fp:
+        json.dump(model_to_dict(data), fp, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, CONFIG_PATH)
 
 
 class TaskState:
@@ -319,6 +364,10 @@ def start(data: StartRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     state.reset()
+    try:
+        write_saved_config(data)
+    except Exception as exc:
+        state.log(f"[提示] 参数未能保存: {exc}")
     thread = threading.Thread(target=worker, args=(args,), daemon=True)
     with state.lock:
         state.thread = thread
@@ -352,6 +401,34 @@ def stop() -> dict[str, Any]:
 @app.get("/api/status")
 def status() -> dict[str, Any]:
     return state.snapshot()
+
+
+@app.get("/api/config")
+def get_config() -> dict[str, Any]:
+    saved = read_saved_config()
+    return {
+        "saved": saved is not None,
+        "config": saved if saved is not None else model_to_dict(StartRequest()),
+    }
+
+
+@app.post("/api/config")
+def save_config(data: StartRequest) -> dict[str, Any]:
+    try:
+        write_saved_config(data)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存参数失败: {exc}") from exc
+    return {"ok": True, "path": CONFIG_PATH}
+
+
+@app.post("/api/config/reset")
+def reset_config() -> dict[str, Any]:
+    try:
+        if os.path.exists(CONFIG_PATH):
+            os.remove(CONFIG_PATH)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"清除参数失败: {exc}") from exc
+    return {"ok": True}
 
 
 class RevealRequest(BaseModel):
