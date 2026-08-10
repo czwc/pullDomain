@@ -34,6 +34,7 @@ from fetch_gname_ykj_ranges import (
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 CONFIG_PATH = os.path.join(BASE_DIR, "web_config.json")
+PROFILES_PATH = os.path.join(BASE_DIR, "web_profiles.json")
 
 app = FastAPI(title="gname 一口价网页工具")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -99,6 +100,37 @@ def write_saved_config(data: StartRequest) -> None:
     with open(tmp_path, "w", encoding="utf-8") as fp:
         json.dump(model_to_dict(data), fp, ensure_ascii=False, indent=2)
     os.replace(tmp_path, CONFIG_PATH)
+
+
+def read_profiles() -> dict[str, Any]:
+    """读取所有命名方案；文件不存在或损坏时返回空字典。"""
+    if not os.path.exists(PROFILES_PATH):
+        return {}
+    try:
+        with open(PROFILES_PATH, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def write_profiles(data: dict[str, Any]) -> None:
+    """原子写入方案文件。"""
+    tmp_path = PROFILES_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as fp:
+        json.dump(data, fp, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, PROFILES_PATH)
+
+
+class SaveProfileRequest(BaseModel):
+    name: str
+    config: dict[str, Any] = {}
+
+
+class ProfileNameRequest(BaseModel):
+    name: str
 
 
 class TaskState:
@@ -364,10 +396,6 @@ def start(data: StartRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     state.reset()
-    try:
-        write_saved_config(data)
-    except Exception as exc:
-        state.log(f"[提示] 参数未能保存: {exc}")
     thread = threading.Thread(target=worker, args=(args,), daemon=True)
     with state.lock:
         state.thread = thread
@@ -428,6 +456,52 @@ def reset_config() -> dict[str, Any]:
             os.remove(CONFIG_PATH)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"清除参数失败: {exc}") from exc
+    return {"ok": True}
+
+
+@app.get("/api/profiles")
+def list_profiles() -> dict[str, Any]:
+    profiles = read_profiles()
+    return {"profiles": list(profiles.keys())}
+
+
+@app.post("/api/profiles/save")
+def save_profile(req: SaveProfileRequest) -> dict[str, Any]:
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="方案名称不能为空")
+    profiles = read_profiles()
+    profiles[name] = {
+        "config": req.config,
+        "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    try:
+        write_profiles(profiles)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存方案失败: {exc}") from exc
+    return {"ok": True}
+
+
+@app.post("/api/profiles/load")
+def load_profile(req: ProfileNameRequest) -> dict[str, Any]:
+    name = req.name.strip()
+    profiles = read_profiles()
+    if name not in profiles:
+        raise HTTPException(status_code=404, detail=f"方案不存在: {name}")
+    return {"config": profiles[name].get("config", {})}
+
+
+@app.post("/api/profiles/delete")
+def delete_profile(req: ProfileNameRequest) -> dict[str, Any]:
+    name = req.name.strip()
+    profiles = read_profiles()
+    if name not in profiles:
+        raise HTTPException(status_code=404, detail=f"方案不存在: {name}")
+    del profiles[name]
+    try:
+        write_profiles(profiles)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"删除方案失败: {exc}") from exc
     return {"ok": True}
 
 

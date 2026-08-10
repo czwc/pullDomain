@@ -105,8 +105,13 @@
           </div>
 
           <div class="config-row" style="margin-bottom:16px;">
-            <button class="secondary" onclick="resetConfig()">恢复默认参数</button>
-            <span class="hint" id="saveTip">改过的参数会自动记住，下次打开自动填回</span>
+            <select id="profileSelect" onchange="loadProfile()" style="min-height:48px;border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:15px;background:#fff;color:var(--text);min-width:140px;cursor:pointer;">
+              <option value="">== 选择方案 ==</option>
+            </select>
+            <button class="secondary" onclick="saveProfile()">保存参数</button>
+            <button class="secondary" onclick="deleteProfile()">删除方案</button>
+            <button class="secondary" onclick="resetConfig()">恢复默认</button>
+            <span class="hint" id="saveTip">选择方案加载参数，点保存参数存储</span>
           </div>
 
           <div class="section-title">采集参数</div>
@@ -192,67 +197,20 @@ function applyConfig(cfg) {
 }
 
 async function loadConfig() {
-  try {
-    const res = await fetch('/api/config');
-    const data = await res.json();
-    if (data && data.saved) {
-      applyConfig(data.config);
-      setSaveTip('已填回上次保存的参数');
-      return;
-    }
-  } catch (e) {}
-  // 首次运行：沿用旧版本存在浏览器里的输出目录
-  const legacyDir = localStorage.getItem('output_dir');
-  if (legacyDir) $('output_dir').value = legacyDir;
-}
-
-let saveTimer = null;
-async function saveConfig() {
-  saveTimer = null;
-  try {
-    const res = await fetch('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload())
-    });
-    if (!res.ok) throw new Error('save failed');
-    setSaveTip('已自动保存 ' + new Date().toLocaleTimeString());
-  } catch (e) {
-    setSaveTip('保存失败，本次修改只在当前页面有效');
+  // 记住上次选中的方案名，自动加载
+  const lastName = localStorage.getItem('last_profile');
+  if (lastName) {
+    await loadProfileByName(lastName);
   }
-}
-function scheduleSave() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveConfig, 600);
 }
 
 async function resetConfig() {
-  if (!confirm('恢复默认参数？已保存的参数会被清除。')) return;
-  clearTimeout(saveTimer);
-  saveTimer = null;
+  if (!confirm('恢复默认参数？')) return;
   applyConfig(DEFAULTS);
-  localStorage.removeItem('output_dir');
-  try {
-    const res = await fetch('/api/config/reset', { method: 'POST' });
-    if (!res.ok) throw new Error('reset failed');
-    setSaveTip('已恢复默认参数');
-  } catch (e) {
-    setSaveTip('已恢复默认参数，但清除保存文件失败');
-  }
+  $('profileSelect').value = '';
+  localStorage.removeItem('last_profile');
+  setSaveTip('已恢复默认参数');
 }
-
-TEXT_FIELDS.concat(CHECK_FIELDS).forEach(id => {
-  $(id).addEventListener('input', scheduleSave);
-  $(id).addEventListener('change', scheduleSave);
-});
-
-// 关页面时把还没到点的那次保存补上
-window.addEventListener('beforeunload', () => {
-  if (!saveTimer) return;
-  clearTimeout(saveTimer);
-  const blob = new Blob([JSON.stringify(payload())], { type: 'application/json' });
-  navigator.sendBeacon('/api/config', blob);
-});
 
 async function post(url, body) {
   const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : '{}' });
@@ -266,8 +224,6 @@ async function post(url, body) {
 }
 
 async function startTask() {
-  clearTimeout(saveTimer);
-  saveTimer = null;
   await post('/api/start', payload());
 }
 async function readyTask() { await post('/api/ready'); }
@@ -314,7 +270,99 @@ async function poll() {
   setTimeout(poll, 1000);
 }
 loadConfig();
+loadProfiles();
 poll();
+
+// ===== 多方案管理（用户主动保存） =====
+async function loadProfiles() {
+  try {
+    const res = await fetch('/api/profiles');
+    const data = await res.json();
+    const sel = $('profileSelect');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">== 选择方案 ==</option>';
+    (data.profiles || []).forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  } catch(e) {}
+}
+
+async function saveProfile() {
+  const sel = $('profileSelect');
+  let name = sel.value;
+  if (!name) {
+    // 没选中方案，弹窗输名字新建
+    name = prompt('请输入方案名称：');
+    if (!name || !name.trim()) return;
+    name = name.trim();
+  } else {
+    if (!confirm('确认覆盖方案 "' + name + '"？')) return;
+  }
+  try {
+    const res = await fetch('/api/profiles/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, config: payload() })
+    });
+    if (!res.ok) throw new Error('save failed');
+    await loadProfiles();
+    sel.value = name;
+    localStorage.setItem('last_profile', name);
+    setSaveTip('方案 "' + name + '" 已保存 ' + new Date().toLocaleTimeString());
+  } catch(e) {
+    alert('保存方案失败');
+  }
+}
+
+async function loadProfile() {
+  const name = $('profileSelect').value;
+  if (!name) return;
+  await loadProfileByName(name);
+}
+
+async function loadProfileByName(name) {
+  try {
+    const res = await fetch('/api/profiles/load', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!res.ok) throw new Error('load failed');
+    const data = await res.json();
+    applyConfig(data.config);
+    $('profileSelect').value = name;
+    localStorage.setItem('last_profile', name);
+    setSaveTip('已加载方案 "' + name + '"');
+  } catch(e) {
+    // 方案可能已被删除，清除记住的名称
+    localStorage.removeItem('last_profile');
+  }
+}
+
+async function deleteProfile() {
+  const sel = $('profileSelect');
+  const name = sel.value;
+  if (!name) { alert('请先选择要删除的方案'); return; }
+  if (!confirm('确认删除方案 "' + name + '"？')) return;
+  try {
+    const res = await fetch('/api/profiles/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!res.ok) throw new Error('delete failed');
+    await loadProfiles();
+    sel.value = '';
+    localStorage.removeItem('last_profile');
+    setSaveTip('方案 "' + name + '" 已删除');
+  } catch(e) {
+    alert('删除方案失败');
+  }
+}
 </script>
 </body>
 </html>
