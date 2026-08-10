@@ -104,6 +104,11 @@
             <button class="danger" onclick="stopTask()">停止</button>
           </div>
 
+          <div class="config-row" style="margin-bottom:16px;">
+            <button class="secondary" onclick="resetConfig()">恢复默认参数</button>
+            <span class="hint" id="saveTip">改过的参数会自动记住，下次打开自动填回</span>
+          </div>
+
           <div class="section-title">采集参数</div>
 
           <div class="row">
@@ -144,13 +149,6 @@
             <label><input id="export_csv" type="checkbox" checked> 主CSV</label>
             <label><input id="export_json" type="checkbox"> JSON</label>
             <label><input id="export_import_csv" type="checkbox" checked> 0612格式CSV</label>
-          </div>
-
-          <div class="section-title">参数记忆</div>
-
-          <div class="config-row">
-            <button class="secondary" onclick="resetConfig()">恢复默认参数</button>
-            <span class="hint" id="saveTip">改过的参数会自动记住，下次打开自动填回</span>
           </div>
 
           <div class="files" id="files"></div>
