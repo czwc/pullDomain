@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Afternic监控" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+  <link rel="apple-touch-icon" href="/static/icon.svg" />
+  <title>Afternic 售出邮件监控</title>
+  <style>
+    :root {
+      --primary:#2563eb; --primary-dark:#1d4ed8; --bg:#eef3fb; --card:#fff;
+      --text:#0f172a; --muted:#64748b; --border:#dbe3ef; --soft:#f8fafc;
+      --ok:#16a34a; --danger:#dc2626; --warning:#f59e0b; --gold:#eab308;
+      --radius:16px;
+    }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    body {
+      margin:0; font-family:-apple-system,"Microsoft YaHei UI","Segoe UI",Arial,sans-serif;
+      background:radial-gradient(circle at top left,rgba(37,99,235,.12),transparent 40%),
+        linear-gradient(180deg,#f8fbff 0%,var(--bg) 100%);
+      color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased;
+    }
+    .wrap { max-width:640px; margin:0 auto; padding:14px; }
+
+    header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:14px; padding:16px 18px; border:1px solid var(--border);
+      border-radius:var(--radius); background:rgba(255,255,255,.8);
+      backdrop-filter:blur(12px); box-shadow:0 8px 30px rgba(15,23,42,.06);
+    }
+    .header-left { display:flex; align-items:center; gap:12px; }
+    .logo { width:40px; height:40px; flex-shrink:0; }
+    h1 { font-size:18px; margin:0; }
+    .sub { font-size:11px; color:var(--muted); margin-top:2px; }
+    .badge {
+      padding:7px 14px; border-radius:999px; font-weight:700; font-size:12px;
+      min-width:64px; text-align:center; white-space:nowrap;
+    }
+    .b-idle { background:#dbeafe; color:#1d4ed8; }
+    .b-run { background:#fef3c7; color:#92400e; }
+    .b-done { background:#dcfce7; color:#15803d; }
+    .b-err { background:#fee2e2; color:#991b1b; }
+
+    .card {
+      background:rgba(255,255,255,.95); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:0 8px 30px rgba(15,23,42,.06);
+      overflow:hidden; margin-bottom:14px;
+    }
+    .card-title {
+      padding:14px 18px; font-size:15px; font-weight:800;
+      border-bottom:1px solid var(--border);
+      background:linear-gradient(180deg,#fff,#f8fbff);
+      display:flex; align-items:center; gap:8px;
+    }
+    .card-title::before {
+      content:""; width:4px; height:16px; border-radius:4px; background:var(--primary);
+    }
+    .card-body { padding:16px 18px; }
+
+    label { display:block; font-size:13px; color:#334155; margin-bottom:6px; font-weight:700; }
+    input[type="text"], input[type="password"], input[type="number"], select {
+      width:100%; height:46px; border:1px solid var(--border); border-radius:12px;
+      padding:0 14px; font-size:16px; outline:none; background:#fff; color:var(--text);
+      transition:border-color .15s ease, box-shadow .15s ease;
+      -webkit-appearance:none; appearance:none;
+    }
+    input:focus, select:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+    .field { margin-bottom:12px; }
+    .field:last-child { margin-bottom:0; }
+    .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+    .check-row {
+      display:flex; align-items:center; gap:10px; padding:10px 12px;
+      border:1px solid var(--border); border-radius:12px; background:var(--soft);
+      margin-bottom:12px;
+    }
+    .check-row input { width:18px; height:18px; accent-color:var(--primary); }
+    .check-row label { margin:0; font-size:13px; cursor:pointer; }
+
+    .hint { color:var(--muted); font-size:11px; margin-top:4px; line-height:1.5; }
+
+    .btn-row { display:flex; gap:10px; }
+    button {
+      border:0; border-radius:12px; padding:13px 16px; font-size:15px; cursor:pointer;
+      font-weight:800; transition:transform .12s ease, box-shadow .12s, opacity .12s;
+      flex:1;
+    }
+    button:active:not(:disabled) { transform:scale(.97); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-primary { background:linear-gradient(135deg,var(--primary),#38bdf8); color:#fff; }
+    .btn-secondary { background:#e8eef7; color:#0f172a; }
+    .btn-danger { background:linear-gradient(135deg,var(--danger),#fb7185); color:#fff; }
+
+    .banner {
+      background:linear-gradient(135deg,#fef3c7,#fef9e7); border:1px solid #fcd34d;
+      border-radius:12px; padding:12px 14px; margin-bottom:12px; font-size:12px;
+      line-height:1.6; color:#92400e;
+    }
+    .banner b { color:#78350f; }
+
+    .summary { display:flex; gap:10px; margin-bottom:12px; }
+    .stat {
+      flex:1; padding:12px 14px; border-radius:12px;
+      background:linear-gradient(135deg,#eff6ff,#ecfeff); border:1px solid #bfdbfe;
+      text-align:center;
+    }
+    .stat .num { font-size:22px; font-weight:900; color:#1e40af; }
+    .stat .lbl { font-size:10px; color:var(--muted); margin-top:2px; }
+
+    .mail-item {
+      background:var(--soft); border:1px solid var(--border); border-radius:12px;
+      padding:12px 14px; margin-bottom:8px; transition:border-color .15s;
+    }
+    .mail-item:active { border-color:var(--primary); }
+    .mail-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+    .mail-domain { font-size:16px; font-weight:800; color:var(--primary-dark); word-break:break-all; }
+    .mail-price { font-size:18px; font-weight:900; color:var(--ok); white-space:nowrap; }
+    .type-tag {
+      display:inline-block; padding:2px 8px; border-radius:6px; font-size:10px;
+      font-weight:800; margin-right:6px; vertical-align:middle;
+    }
+    .type-sold { background:#dcfce7; color:#15803d; }
+    .type-paid { background:#fef3c7; color:#92400e; }
+    .mail-meta { display:flex; gap:10px; flex-wrap:wrap; margin-top:6px; font-size:11px; color:var(--muted); }
+    .mail-meta span { display:flex; gap:3px; }
+    .mail-meta b { color:#334155; }
+    .mail-preview {
+      margin-top:6px; font-size:12px; color:#475569; line-height:1.5;
+      max-height:60px; overflow:hidden; cursor:pointer; white-space:pre-wrap;
+      word-break:break-all; border-top:1px solid var(--border); padding-top:6px;
+    }
+    .mail-preview.expanded { max-height:none; }
+
+    .log-box {
+      background:#0b1220; color:#d7e7ff; border-radius:12px; padding:12px;
+      max-height:240px; overflow:auto; font-family:Consolas,monospace;
+      font-size:12px; line-height:1.6; white-space:pre-wrap;
+    }
+
+    .empty { text-align:center; padding:32px 16px; color:var(--muted); }
+    .empty .icon { font-size:40px; margin-bottom:8px; }
+
+    .spinner {
+      display:inline-block; width:14px; height:14px;
+      border:2px solid currentColor; border-top-color:transparent;
+      border-radius:50%; animation:spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    .install-tip {
+      display:none; background:linear-gradient(135deg,#dbeafe,#ecfeff);
+      border:1px solid #93c5fd; border-radius:12px; padding:10px 14px;
+      font-size:12px; color:#1e40af; margin-bottom:12px; line-height:1.5;
+    }
+    .install-tip.show { display:block; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="header-left">
+      <img src="/static/icon.svg" class="logo" alt="logo" />
+      <div>
+        <h1>Afternic 售出/付款监控</h1>
+        <div class="sub">QQ 邮箱 · 售出 + 付款通知</div>
+      </div>
+    </div>
+    <div id="badge" class="badge b-idle">就绪</div>
+  </header>
+
+  <!-- 安装提示 -->
+  <div id="installTip" class="install-tip">
+    <b>添加到主屏幕：</b>点击浏览器菜单 → "添加到主屏幕"，即可像 App 一样使用。
+  </div>
+
+  <!-- 配置 -->
+  <div class="card">
+    <div class="card-title">邮箱配置</div>
+    <div class="card-body">
+      <div class="banner">
+        <b>需先开启 IMAP：</b>QQ邮箱 → 设置 → 账户 → IMAP服务 → 开启并生成授权码
+      </div>
+      <div class="field">
+        <label>QQ 邮箱地址</label>
+        <input type="text" id="email" value="443320390@qq.com" placeholder="QQ邮箱地址" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label>IMAP 授权码</label>
+        <input type="password" id="authCode" placeholder="16位授权码（非QQ密码）" autocomplete="off" />
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label>搜索类型</label>
+          <select id="searchType">
+            <option value="sold">售出 (has sold at Afternic)</option>
+            <option value="payment">付款 (Payment has been sent)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>搜索小时数</label>
+          <input type="number" id="hours" value="24" min="1" max="8760" step="1" />
+          <div class="hint">最小 1 小时，例如 6 表示最近 6 小时</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>文件夹</label>
+        <select id="folder">
+          <option value="INBOX">收件箱</option>
+          <option value="Junk">垃圾邮件</option>
+          <option value="其他文件夹/Afternic">Afternic</option>
+          <option value="其他文件夹/已卖出">已卖出</option>
+        </select>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="saveCreds" />
+        <label for="saveCreds">保存授权码（方便下次免输入）</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btnFetch" onclick="startFetch()">
+          <span id="btnFetchText">搜索邮件</span>
+        </button>
+        <button class="btn-secondary" onclick="saveConfig()">保存</button>
+        <button class="btn-danger" id="btnStop" onclick="stopFetch()" disabled>停止</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 结果 -->
+  <div class="card">
+    <div class="card-title">售出/付款记录 <span id="cnt" style="font-weight:400;color:var(--muted);font-size:12px;"></span></div>
+    <div class="card-body">
+      <div id="summary" style="display:none;" class="summary">
+        <div class="stat"><div class="num" id="tCount">0</div><div class="lbl">售出域名</div></div>
+        <div class="stat"><div class="num" id="tPrice">$0</div><div class="lbl">总售价</div></div>
+      </div>
+      <div id="results">
+        <div class="empty">
+          <div class="icon">📧</div>
+          <div>点击"搜索邮件"开始查找</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 日志 -->
+  <div class="card">
+    <div class="card-title">运行日志</div>
+    <div class="card-body">
+      <div class="log-box" id="log">等待操作...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+let pollTimer = null;
+
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function setBadge(status) {
+  const el = document.getElementById('badge');
+  const m = {
+    '就绪':['b-idle','就绪'], '准备中':['b-run','准备中'], '连接邮箱中...':['b-run','连接中'],
+    '完成':['b-done','完成'], '出错':['b-err','出错'], '已停止':['b-err','已停止']
+  };
+  const [cls, txt] = m[status] || ['b-run', status];
+  el.className = 'badge ' + cls;
+  el.textContent = txt;
+}
+
+async function loadConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const d = await r.json();
+    if (d.email) document.getElementById('email').value = d.email;
+    if (d.search_hours) document.getElementById('hours').value = d.search_hours;
+    if (d.folder) document.getElementById('folder').value = d.folder;
+    if (d.has_auth_code) document.getElementById('authCode').placeholder = '已保存（修改请重新输入）';
+  } catch(e) {}
+}
+
+async function saveConfig() {
+  const email = document.getElementById('email').value.trim();
+  const hours = document.getElementById('hours').value.trim();
+  const folder = document.getElementById('folder').value;
+  const authCode = document.getElementById('authCode').value.trim();
+  const saveCreds = document.getElementById('saveCreds').checked;
+  if (!email) { alert('请输入邮箱地址'); return; }
+  try {
+    await fetch('/api/config', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, auth_code:authCode, search_hours:hours, folder, save_creds:saveCreds })
+    });
+    alert('配置已保存');
+  } catch(e) { alert('保存失败: ' + e.message); }
+}
+
+async function startFetch() {
+  const email = document.getElementById('email').value.trim();
+  const authCode = document.getElementById('authCode').value.trim();
+  const hours = document.getElementById('hours').value.trim();
+  const folder = document.getElementById('folder').value;
+  const searchType = document.getElementById('searchType').value;
+  if (!email) { alert('请输入 QQ 邮箱地址'); return; }
+  if (!authCode) { alert('请输入 IMAP 授权码'); return; }
+
+  document.getElementById('btnFetch').disabled = true;
+  document.getElementById('btnFetchText').innerHTML = '<span class="spinner"></span> 搜索中';
+  document.getElementById('btnStop').disabled = false;
+  setBadge('准备中');
+  document.getElementById('results').innerHTML =
+    '<div class="empty"><span class="spinner" style="color:#2563eb;"></span><div style="margin-top:10px;">正在搜索邮件...</div></div>';
+
+  try {
+    const r = await fetch('/api/fetch', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, auth_code:authCode, search_hours:hours, folder, search_type:searchType })
+    });
+    const d = await r.json();
+    if (!r.ok) { alert(d.detail || '请求失败'); resetButtons(); return; }
+    startPoll();
+  } catch(e) { alert('请求失败: ' + e.message); resetButtons(); }
+}
+
+function startPoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/status');
+      const d = await r.json();
+      updateUI(d);
+      if (!d.running) { clearInterval(pollTimer); pollTimer=null; resetButtons(); }
+    } catch(e) {}
+  }, 1500);
+}
+
+function updateUI(d) {
+  setBadge(d.status);
+  const log = document.getElementById('log');
+  log.textContent = d.logs.join('\n') || '无日志';
+  log.scrollTop = log.scrollHeight;
+
+  if (d.results && d.results.length > 0) {
+    renderResults(d.results);
+  } else if (!d.running && d.status === '完成') {
+    document.getElementById('results').innerHTML =
+      '<div class="empty"><div class="icon">📭</div><div>未找到售出或付款邮件</div></div>';
+  }
+}
+
+function renderResults(results) {
+  const searchType = document.getElementById('searchType').value;
+  const typeLabel = searchType === 'payment' ? '付款' : '售出';
+  document.getElementById('cnt').textContent = `（${typeLabel} ${results.length} 条）`;
+  document.getElementById('summary').style.display = 'flex';
+  document.getElementById('tCount').textContent = results.length;
+
+  let total = 0;
+  for (const r of results) {
+    const p = parseFloat((r.price || '0').replace(/,/g, ''));
+    if (!isNaN(p) && p > 0) total += p;
+  }
+  document.getElementById('tPrice').textContent = '$' + total.toLocaleString();
+
+  const html = results.map(r => {
+    const price = r.price ? '$' + r.price : '未知';
+    const tag = r.type === '付款'
+      ? '<span class="type-tag type-paid">付款</span>'
+      : '<span class="type-tag type-sold">售出</span>';
+    const meta = [];
+    if (r.date) meta.push(`<span><b>日期</b> ${esc(r.date)}</span>`);
+    if (r.commission) meta.push(`<span><b>佣金</b> $${esc(r.commission)}</span>`);
+    if (r.payout) meta.push(`<span><b>净收</b> $${esc(r.payout)}</span>`);
+    if (r.buyer) meta.push(`<span><b>买家</b> ${esc(r.buyer)}</span>`);
+    return `
+      <div class="mail-item">
+        <div class="mail-top">
+          <div class="mail-domain">${tag}${esc(r.domain) || esc(r.subject) || '(未知)'}</div>
+          <div class="mail-price">${price}</div>
+        </div>
+        ${meta.length ? `<div class="mail-meta">${meta.join('')}</div>` : ''}
+        ${r.preview ? `<div class="mail-preview" onclick="this.classList.toggle('expanded')">${esc(r.preview)}</div>` : ''}
+      </div>`;
+  }).join('');
+  document.getElementById('results').innerHTML = html;
+}
+
+async function stopFetch() {
+  try { await fetch('/api/stop', {method:'POST'}); } catch(e) {}
+  if (pollTimer) { clearInterval(pollTimer); pollTimer=null; }
+  resetButtons();
+}
+
+function resetButtons() {
+  document.getElementById('btnFetch').disabled = false;
+  document.getElementById('btnFetchText').textContent = '搜索邮件';
+  document.getElementById('btnStop').disabled = true;
+}
+
+// PWA 安装提示
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installTip').classList.add('show');
+});
+
+// iOS 检测
+if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone) {
+  document.getElementById('installTip').classList.add('show');
+  document.getElementById('installTip').innerHTML =
+    '<b>添加到主屏幕：</b>点击底部分享按钮 → "添加到主屏幕"，即可像 App 一样使用。';
+}
+
+loadConfig();
+</script>
+</body>
+</html

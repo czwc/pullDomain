@@ -1,0 +1,86 @@
+{
+  "0-200两天": {
+    "config": {
+      "ymhz": "com,cc,net",
+      "zcsj_2": "2026",
+      "dqsj_1": "30",
+      "jylx": "nei",
+      "fbsj_days": "2",
+      "pagesize": "500",
+      "ranges": "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100,100.01-110,110.01-120,120.01-130,130.01-140,140.01-150,150.01-160,160.01-170,170.01-180,180.01-190,190.01-200",
+      "extra": "",
+      "output_dir": "",
+      "min_register_days": "60",
+      "import_min_price": "80",
+      "import_price_divisor": "0.6",
+      "import_price_multiplier": "1.5",
+      "export_csv": false,
+      "export_json": false,
+      "export_import_csv": true
+    },
+    "updated": "2026-08-10 14:57:33"
+  },
+  "0-200全量": {
+    "config": {
+      "ymhz": "com,cc,net",
+      "zcsj_2": "2026",
+      "dqsj_1": "30",
+      "jylx": "nei",
+      "fbsj_days": "",
+      "pagesize": "500",
+      "ranges": "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100,100.01-110,110.01-120,120.01-130,130.01-140,140.01-150,150.01-160,160.01-170,170.01-180,180.01-190,190.01-200",
+      "extra": "",
+      "output_dir": "",
+      "min_register_days": "60",
+      "import_min_price": "80",
+      "import_price_divisor": "0.6",
+      "import_price_multiplier": "1.5",
+      "export_csv": false,
+      "export_json": false,
+      "export_import_csv": true
+    },
+    "updated": "2026-08-10 14:58:07"
+  },
+  "0-100两天": {
+    "config": {
+      "ymhz": "com,cc,net",
+      "zcsj_2": "2026",
+      "dqsj_1": "30",
+      "jylx": "nei",
+      "fbsj_days": "2",
+      "pagesize": "500",
+      "ranges": "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100",
+      "extra": "",
+      "output_dir": "",
+      "min_register_days": "60",
+      "import_min_price": "80",
+      "import_price_divisor": "0.6",
+      "import_price_multiplier": "1.5",
+      "export_csv": false,
+      "export_json": false,
+      "export_import_csv": true
+    },
+    "updated": "2026-08-10 14:58:44"
+  },
+  "0-100全量": {
+    "config": {
+      "ymhz": "com,cc,net",
+      "zcsj_2": "2026",
+      "dqsj_1": "30",
+      "jylx": "nei",
+      "fbsj_days": "",
+      "pagesize": "500",
+      "ranges": "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100",
+      "extra": "",
+      "output_dir": "",
+      "min_register_days": "60",
+      "import_min_price": "80",
+      "import_price_divisor": "0.6",
+      "import_price_multiplier": "1.5",
+      "export_csv": false,
+      "export_json": false,
+      "export_import_csv": true
+    },
+    "updated": "2026-08-10 14:59:23"
+  }
+}

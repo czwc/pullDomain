@@ -1,0 +1,54 @@
+Afternic 售出邮件监控工具 - 使用说明
+======================================
+
+【这是什么】
+连接 QQ 邮箱，自动搜索 "has sold at Afternic" 售出通知邮件，
+提取域名、售价、佣金、净收入等信息。
+
+【文件结构】
+  afternic_mail_tool/
+  ├── app.py              后端服务（IMAP + FastAPI）
+  ├── static/
+  │   ├── index.html      手机/电脑网页界面
+  │   ├── manifest.json    PWA 配置（添加到主屏幕用）
+  │   └── icon.svg         应用图标
+  ├── requirements.txt     Python 依赖
+  ├── 启动工具.bat         Windows 一键启动
+  └── 使用说明.txt         本文件
+
+【使用步骤】
+
+1. 开启 QQ 邮箱 IMAP 服务
+   - 登录 QQ 邮箱网页版
+   - 设置 -> 账户 -> POP3/IMAP/SMTP服务
+   - 开启 IMAP 服务
+   - 生成授权码（16位字母）
+
+2. 启动工具
+   - 电脑上双击 "启动工具.bat"
+   - 自动打开浏览器
+
+3. 手机使用
+   - 确保手机和电脑连同一个 WiFi
+   - 手机浏览器访问 http://电脑IP:8001
+   - 查看电脑 IP：命令行输入 ipconfig，找 IPv4 地址
+   - 首次访问 Windows 可能弹出防火墙提示，点"允许"
+
+4. 添加到手机主屏幕（当 App 用）
+   - 安卓 Chrome：菜单 -> 添加到主屏幕
+   - iOS Safari：分享按钮 -> 添加到主屏幕
+
+5. 在页面填写
+   - QQ 邮箱地址（如 123456789@qq.com）
+   - IMAP 授权码（不是 QQ 密码）
+   - 搜索天数（默认30天）
+   - 点击"搜索邮件"
+
+【独立部署】
+整个 afternic_mail_tool 文件夹是独立的，
+可以复制到任何有 Python 环境的电脑/服务器上运行。
+
+  pip install -r requirements.txt
+  python app.py
+
+然后手机浏览器访问即可。
