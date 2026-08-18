@@ -55,12 +55,12 @@
       "min_register_days": "60",
       "import_min_price": "80",
       "import_price_divisor": "0.6",
-      "import_price_multiplier": "1.5",
+      "import_price_multiplier": "1.4",
       "export_csv": false,
       "export_json": false,
       "export_import_csv": true
     },
-    "updated": "2026-08-10 14:58:44"
+    "updated": "2026-08-14 09:21:54"
   },
   "0-100全量": {
     "config": {

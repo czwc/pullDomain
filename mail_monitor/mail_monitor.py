@@ -38,6 +38,7 @@ def apply_environment_config(config):
     email_addr = os.getenv("QQ_EMAIL")
     auth_code = os.getenv("QQ_AUTH_CODE")
     sendkeys = os.getenv("SERVERCHAN_SENDKEYS")
+    check_since_hours = os.getenv("CHECK_SINCE_HOURS")
 
     if email_addr:
         config.setdefault("qq_mail", {})["email"] = email_addr
@@ -47,6 +48,11 @@ def apply_environment_config(config):
         config.setdefault("serverchan", {})["sendkeys"] = [
             key.strip() for key in sendkeys.replace(";", ",").split(",") if key.strip()
         ]
+    if check_since_hours:
+        try:
+            config["check_since_hours"] = float(check_since_hours)
+        except ValueError:
+            raise ValueError("CHECK_SINCE_HOURS 必须是大于0的数字")
     return config
 
 

@@ -1,14 +1,14 @@
 {
   "qq_mail": {
-    "email": "443320390@qq.com",
-    "auth_code": "bftwxyiunhldcaic"
+    "email": "your_qq@qq.com",
+    "auth_code": "your_qq_auth_code"
   },
   "serverchan": {
     "sendkeys": [
-      "SCT399949TgeUqAmFFcTadK0JzylpFQ0f5",
-      "SCT399946TiLoCGcVgMkHZKkFaUQrCQxmW"
+      "your_sendkey_1",
+      "your_sendkey_2"
     ]
   },
   "keyword": "has sold",
-  "check_since_hours": 3
+  "check_since_hours": 1
 }
