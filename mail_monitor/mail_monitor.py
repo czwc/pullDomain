@@ -131,20 +131,22 @@ def get_email_body(msg, max_chars=500):
 
 
 def send_serverchan(sendkeys, title, desp):
-    """通过 Server酱 推送到微信 (支持多个SendKey，全部推送)"""
+    """通过多个Server酱SendKey推送同一条汇总消息。"""
+    success_count = 0
     for i, key in enumerate(sendkeys):
         url = SERVERCHAN_API.format(key=key)
         try:
             resp = requests.post(url, data={"title": title, "desp": desp}, timeout=15)
             if resp.status_code == 200 and resp.json().get("code") == 0:
-                print(f"  [推送成功] SendKey #{i+1}: 消息已发送到微信")
+                print(f"  [推送成功] SendKey #{i+1}: 汇总消息已发送到微信")
+                success_count += 1
             else:
                 print(f"  [推送失败] SendKey #{i+1}: HTTP {resp.status_code}: {resp.text}")
         except Exception as e:
             print(f"  [推送异常] SendKey #{i+1}: {e}")
-        # 多Key之间间隔，避免请求太快
         if i < len(sendkeys) - 1:
             time.sleep(0.5)
+    return success_count > 0
 
 
 def check_mail(config):
@@ -207,6 +209,7 @@ def check_mail(config):
         in_time_range = 0
         skipped_by_time = 0
         skipped_without_date = 0
+        pending_notifications = []
         for mid in msg_ids:
             # 先只取邮件头，不下载正文和附件
             status, header_data = mail.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (DATE FROM SUBJECT MESSAGE-ID)])")
@@ -267,21 +270,35 @@ def check_mail(config):
 
             print(f"  [命中] {subject}")
             body = get_email_body(msg)
-            desp = (
-                f"**发件人**: {sender}\n\n"
-                f"**时间**: {date_str}\n\n"
-                f"**主题**: {subject}\n\n"
-                f"---\n\n"
-                f"{body}"
+            pending_notifications.append(
+                {
+                    "message_id": message_id,
+                    "subject": subject,
+                    "sender": sender,
+                    "date": date_str,
+                    "body": body,
+                }
             )
-
-            send_serverchan(sendkeys, f"域名售出提醒: {subject[:50]}", desp)
-            save_notified_id(message_id)
-            notified_ids.add(message_id)
             found += 1
-            time.sleep(1)
 
         print(f"[时间范围] 精确范围内共 {in_time_range} 封，开始按标题过滤关键词: {keyword}")
+        if pending_notifications:
+            summary_parts = []
+            for index, item in enumerate(pending_notifications, start=1):
+                summary_parts.append(
+                    f"### {index}. {item['subject']}\n\n"
+                    f"**发件人**: {item['sender']}\n\n"
+                    f"**时间**: {item['date']}\n\n"
+                    f"{item['body']}"
+                )
+            summary = "\n\n---\n\n".join(summary_parts)
+            title = f"域名售出提醒：新增 {len(pending_notifications)} 条"
+            if send_serverchan(sendkeys, title, summary):
+                for item in pending_notifications:
+                    save_notified_id(item["message_id"])
+                    notified_ids.add(item["message_id"])
+            else:
+                print("[警告] 汇总推送全部失败，本批邮件不会标记为已推送")
         if skipped_by_time > 0:
             print(f"[时间过滤] 跳过了 {skipped_by_time} 封超出 {since_hours:g} 小时的邮件")
         if skipped_without_date > 0:
@@ -290,7 +307,7 @@ def check_mail(config):
         if found == 0:
             print("[完成] 没有新的包含 'has sold' 的邮件")
         else:
-            print(f"[完成] 共推送了 {found} 条提醒")
+            print(f"[完成] 已汇总推送 {found} 条提醒")
 
     finally:
         mail.logout()
