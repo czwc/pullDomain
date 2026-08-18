@@ -32,7 +32,7 @@ jobs:
           QQ_EMAIL: ${{ secrets.QQ_EMAIL }}
           QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
           SERVERCHAN_SENDKEYS: ${{ secrets.SERVERCHAN_SENDKEYS }}
-          CHECK_SINCE_HOURS: ${{ vars.CHECK_SINCE_HOURS || '1' }}
+          CHECK_SINCE_HOURS: ${{ vars.CHECK_SINCE_HOURS || secrets.CHECK_SINCE_HOURS }}
         run: python mail_monitor.py
 
       - name: Save notification state
