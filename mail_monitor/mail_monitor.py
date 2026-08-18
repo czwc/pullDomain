@@ -163,17 +163,28 @@ def check_mail(config):
         return
 
     keyword = config.get("keyword", "has sold")
-    since_hours = config.get("check_since_hours", 2)
+    try:
+        since_hours = float(config.get("check_since_hours", 2))
+    except (TypeError, ValueError):
+        raise ValueError("check_since_hours 必须是大于0的数字")
+    if since_hours <= 0:
+        raise ValueError("check_since_hours 必须是大于0的数字")
 
     notified_ids = load_notified_ids()
 
-    # 计算搜索起始时间
+    # 计算精确时间范围。now使用UTC，邮件Date头也会统一转换成UTC比较。
     now_utc = datetime.now(timezone.utc)
     since_dt = now_utc - timedelta(hours=since_hours)
-    # IMAP date format: e.g. "18-Aug-2026"
+    # IMAP只能按日期粗筛：从起始日期开始，到明天日期之前。
+    # 这样凌晨运行时会自动覆盖前一天和当天，超过24小时也能覆盖多天。
     since_str = since_dt.strftime("%d-%b-%Y")
+    before_str = (now_utc + timedelta(days=1)).strftime("%d-%b-%Y")
 
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查邮件 (最近 {since_hours} 小时)...")
+    print(
+        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
+        f"开始检查邮件 (最近 {since_hours:g} 小时，"
+        f"{since_dt.strftime('%Y-%m-%d %H:%M')} 至 {now_utc.strftime('%Y-%m-%d %H:%M')} UTC)..."
+    )
 
     # 连接 IMAP
     mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
@@ -181,17 +192,21 @@ def check_mail(config):
         mail.login(email_addr, auth_code)
         mail.select("INBOX")
 
-        # SINCE 只能按日期过滤。这里使用标准的多参数形式，避免QQ邮箱
-        # 将整段字符串误解析为搜索条件；随后按邮件Date精确过滤小时。
-        status, data = mail.search(None, "SINCE", since_str)
+        # SINCE/BEFORE只能按日期过滤。随后按邮件Date精确过滤小时。
+        # BEFORE使用明天日期，避免把未来日期的异常邮件纳入候选。
+        status, data = mail.search(None, "SINCE", since_str, "BEFORE", before_str)
         if status != "OK":
             print("[错误] 搜索邮件失败")
             return
 
         msg_ids = data[0].split()
-        print(f"[日期粗筛] {since_str}之后，共 {len(msg_ids)} 封；开始按时间精筛")
+        print(
+            f"[日期粗筛] {since_str} 至 {before_str}（不含），"
+            f"共 {len(msg_ids)} 封；开始按时间精筛"
+        )
 
         found = 0
+        in_time_range = 0
         skipped_by_time = 0
         skipped_without_date = 0
         for mid in msg_ids:
@@ -228,6 +243,7 @@ def check_mail(config):
                 skipped_by_time += 1
                 continue
 
+            in_time_range += 1
             if keyword.lower() not in subject.lower():
                 continue
 
@@ -267,8 +283,9 @@ def check_mail(config):
             found += 1
             time.sleep(1)
 
+        print(f"[时间范围] 精确范围内共 {in_time_range} 封，开始按标题过滤关键词: {keyword}")
         if skipped_by_time > 0:
-            print(f"[时间过滤] 跳过了 {skipped_by_time} 封超出 {since_hours} 小时的邮件")
+            print(f"[时间过滤] 跳过了 {skipped_by_time} 封超出 {since_hours:g} 小时的邮件")
         if skipped_without_date > 0:
             print(f"[时间过滤] 跳过了 {skipped_without_date} 封无法解析时间的邮件")
 
