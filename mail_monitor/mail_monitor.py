@@ -175,10 +175,9 @@ def check_mail(config):
     # 计算精确时间范围。now使用UTC，邮件Date头也会统一转换成UTC比较。
     now_utc = datetime.now(timezone.utc)
     since_dt = now_utc - timedelta(hours=since_hours)
-    # IMAP只能按日期粗筛：从起始日期开始，到明天日期之前。
-    # 这样凌晨运行时会自动覆盖前一天和当天，超过24小时也能覆盖多天。
+    # IMAP只能按日期粗筛，所以从精确起始时间所在日期开始。
+    # 凌晨运行且范围跨天时，since_dt自然落在昨天；超过24小时则落在更早日期。
     since_str = since_dt.strftime("%d-%b-%Y")
-    before_str = (now_utc + timedelta(days=1)).strftime("%d-%b-%Y")
 
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
@@ -192,17 +191,16 @@ def check_mail(config):
         mail.login(email_addr, auth_code)
         mail.select("INBOX")
 
-        # SINCE/BEFORE只能按日期过滤。随后按邮件Date精确过滤小时。
-        # BEFORE使用明天日期，避免把未来日期的异常邮件纳入候选。
-        status, data = mail.search(None, "SINCE", since_str, "BEFORE", before_str)
+        # SINCE按精确起始时间所在日期粗筛，随后按邮件Date精确过滤小时。
+        status, data = mail.search(None, "SINCE", since_str)
         if status != "OK":
             print("[错误] 搜索邮件失败")
             return
 
         msg_ids = data[0].split()
         print(
-            f"[日期粗筛] {since_str} 至 {before_str}（不含），"
-            f"共 {len(msg_ids)} 封；开始按时间精筛"
+            f"[日期粗筛] 从 {since_str} 开始，共 {len(msg_ids)} 封；"
+            f"再精确筛选最近 {since_hours:g} 小时"
         )
 
         found = 0
