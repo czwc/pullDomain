@@ -33,6 +33,8 @@ jobs:
           QQ_AUTH_CODE: ${{ secrets.QQ_AUTH_CODE }}
           SERVERCHAN_SENDKEYS: ${{ secrets.SERVERCHAN_SENDKEYS }}
           CHECK_SINCE_HOURS: ${{ vars.CHECK_SINCE_HOURS || secrets.CHECK_SINCE_HOURS }}
+          NOTIFICATION_TITLE_PREFIX: ${{ vars.NOTIFICATION_TITLE_PREFIX || secrets.NOTIFICATION_TITLE_PREFIX }}
+          FILTER_NOTIFIED: ${{ vars.FILTER_NOTIFIED || secrets.FILTER_NOTIFIED }}
         run: python mail_monitor.py
 
       - name: Save notification state

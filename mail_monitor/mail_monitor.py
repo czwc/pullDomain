@@ -13,6 +13,8 @@
   - qq_mail.auth_code:    QQ邮箱IMAP授权码
   - serverchan.sendkeys:  Server酱SendKey列表，支持多个，每条消息会推送到所有Key
   - keyword:              邮件标题匹配关键词，默认 "has sold"
+  - notification_title_prefix: 微信通知标题前缀，默认 "域名售出提醒"
+  - filter_notified:      是否过滤已推送邮件，1过滤，0不过滤，默认 1
   - check_since_hours:    检查最近几小时内的邮件，默认 2
 
 获取QQ邮箱授权码: QQ邮箱 -> 设置 -> 账户 -> POP3/IMAP服务 -> 开启 -> 生成授权码
@@ -39,6 +41,8 @@ def apply_environment_config(config):
     auth_code = os.getenv("QQ_AUTH_CODE")
     sendkeys = os.getenv("SERVERCHAN_SENDKEYS")
     check_since_hours = os.getenv("CHECK_SINCE_HOURS")
+    notification_title_prefix = os.getenv("NOTIFICATION_TITLE_PREFIX")
+    filter_notified = os.getenv("FILTER_NOTIFIED")
 
     if email_addr:
         config.setdefault("qq_mail", {})["email"] = email_addr
@@ -53,6 +57,10 @@ def apply_environment_config(config):
             config["check_since_hours"] = float(check_since_hours)
         except ValueError:
             raise ValueError("CHECK_SINCE_HOURS 必须是大于0的数字")
+    if notification_title_prefix:
+        config["notification_title_prefix"] = notification_title_prefix
+    if filter_notified:
+        config["filter_notified"] = filter_notified.strip() == "1"
     return config
 
 
@@ -165,6 +173,14 @@ def check_mail(config):
         return
 
     keyword = config.get("keyword", "has sold")
+    notification_title_prefix = str(
+        config.get("notification_title_prefix", "域名售出提醒")
+    ).strip() or "域名售出提醒"
+    filter_notified = config.get("filter_notified", 1)
+    if isinstance(filter_notified, str):
+        filter_notified = filter_notified.strip() == "1"
+    else:
+        filter_notified = int(filter_notified) == 1
     try:
         since_hours = float(config.get("check_since_hours", 2))
     except (TypeError, ValueError):
@@ -184,6 +200,7 @@ def check_mail(config):
     print(
         f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] "
         f"开始检查邮件 (最近 {since_hours:g} 小时，"
+        f"过滤已推送={'是' if filter_notified else '否'}，"
         f"{since_dt.strftime('%Y-%m-%d %H:%M')} 至 {now_utc.strftime('%Y-%m-%d %H:%M')} UTC)..."
     )
 
@@ -264,7 +281,7 @@ def check_mail(config):
 
             # 用 message-id 去重
             message_id = msg.get("Message-ID", "").strip() or mid.decode()
-            if message_id in notified_ids:
+            if filter_notified and message_id in notified_ids:
                 print(f"  [跳过] 已推送过: {subject}")
                 continue
 
@@ -292,11 +309,12 @@ def check_mail(config):
                     f"{item['body']}"
                 )
             summary = "\n\n---\n\n".join(summary_parts)
-            title = f"域名售出提醒：新增 {len(pending_notifications)} 条"
+            title = f"{notification_title_prefix}：新增 {len(pending_notifications)} 条"
             if send_serverchan(sendkeys, title, summary):
-                for item in pending_notifications:
-                    save_notified_id(item["message_id"])
-                    notified_ids.add(item["message_id"])
+                if filter_notified:
+                    for item in pending_notifications:
+                        save_notified_id(item["message_id"])
+                        notified_ids.add(item["message_id"])
             else:
                 print("[警告] 汇总推送全部失败，本批邮件不会标记为已推送")
         if skipped_by_time > 0:
