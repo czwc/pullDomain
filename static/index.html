@@ -104,6 +104,19 @@
             <button class="danger" onclick="stopTask()">停止</button>
           </div>
 
+          <div class="section-title">参数预设</div>
+
+          <div class="config-row">
+            <select id="presetSelect" onchange="onPresetChange()" style="min-width:200px; min-height:48px; border:1px solid var(--border); border-radius:14px; padding:12px 14px; font-size:15px; background:#fff; color:var(--text); cursor:pointer;">
+              <option value="">-- 选择预设 --</option>
+            </select>
+            <button class="secondary" onclick="loadPreset()">加载预设</button>
+            <button class="secondary" onclick="savePresetAs()">另存为新预设</button>
+            <button class="secondary" onclick="updatePreset()" id="updatePresetBtn" disabled>更新当前预设</button>
+            <button class="danger" onclick="deletePreset()" id="deletePresetBtn" disabled>删除预设</button>
+          </div>
+          <div class="hint" id="presetTip">保存多组参数预设，下次直接选择加载</div>
+
           <div class="section-title">采集参数</div>
 
           <div class="row">
@@ -119,7 +132,7 @@
 
           <div class="field">
             <label>价格区间</label>
-            <textarea id="ranges">0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100</textarea>
+            <textarea id="ranges">0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100,100.01-110,110.01-120,120.01-130,130.01-140,140.01-150,150.01-160,160.01-170,170.01-180,180.01-190,190.01-200</textarea>
 
             <div class="hint">用户可自行删减</div>
           </div>
@@ -243,6 +256,123 @@ async function resetConfig() {
   }
 }
 
+// ── 参数预设 ──────────────────────────────────────────
+let currentPresetName = '';
+
+function setPresetTip(text) { $('presetTip').textContent = text; }
+
+function refreshPresetButtons() {
+  const has = !!currentPresetName;
+  $('updatePresetBtn').disabled = !has;
+  $('deletePresetBtn').disabled = !has;
+}
+
+async function loadPresetList() {
+  try {
+    const res = await fetch('/api/presets');
+    const data = await res.json();
+    const sel = $('presetSelect');
+    const names = Object.keys(data.presets || {});
+    sel.innerHTML = '<option value="">-- 选择预设 --</option>' +
+      names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+    sel.value = currentPresetName;
+  } catch (e) {
+    setPresetTip('加载预设列表失败');
+  }
+}
+
+async function onPresetChange() {
+  // 仅切换选中状态，不自动加载，让用户点"加载预设"按钮
+  currentPresetName = $('presetSelect').value;
+  refreshPresetButtons();
+  if (currentPresetName) {
+    setPresetTip('已选中 "' + currentPresetName + '"，点击"加载预设"应用');
+  } else {
+    setPresetTip('保存多组参数预设，下次直接选择加载');
+  }
+}
+
+async function loadPreset() {
+  const name = $('presetSelect').value;
+  if (!name) { setPresetTip('请先选择一个预设'); return; }
+  try {
+    const res = await fetch('/api/presets');
+    const data = await res.json();
+    const cfg = (data.presets || {})[name];
+    if (!cfg) { setPresetTip('预设 "' + name + '" 不存在'); return; }
+    applyConfig(cfg);
+    currentPresetName = name;
+    refreshPresetButtons();
+    setPresetTip('已加载预设 "' + name + '"');
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  } catch (e) {
+    setPresetTip('加载预设失败');
+  }
+}
+
+async function savePresetAs() {
+  const name = prompt('请输入预设名称：');
+  if (!name) return;
+  const trimmed = name.trim();
+  if (!trimmed) { setPresetTip('预设名称不能为空'); return; }
+  try {
+    const res = await fetch('/api/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: trimmed, config: payload() })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || '保存失败');
+    }
+    currentPresetName = trimmed;
+    await loadPresetList();
+    $('presetSelect').value = trimmed;
+    refreshPresetButtons();
+    setPresetTip('已保存预设 "' + trimmed + '"');
+  } catch (e) {
+    setPresetTip('保存预设失败: ' + e.message);
+  }
+}
+
+async function updatePreset() {
+  if (!currentPresetName) { setPresetTip('请先选择一个预设'); return; }
+  if (!confirm('用当前表单参数覆盖预设 "' + currentPresetName + '"？')) return;
+  try {
+    const res = await fetch('/api/presets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentPresetName, config: payload() })
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || '更新失败');
+    }
+    setPresetTip('已更新预设 "' + currentPresetName + '"');
+  } catch (e) {
+    setPresetTip('更新预设失败: ' + e.message);
+  }
+}
+
+async function deletePreset() {
+  if (!currentPresetName) { setPresetTip('请先选择一个预设'); return; }
+  if (!confirm('确认删除预设 "' + currentPresetName + '"？此操作不可撤销。')) return;
+  try {
+    const res = await fetch('/api/presets/' + encodeURIComponent(currentPresetName), { method: 'DELETE' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || '删除失败');
+    }
+    currentPresetName = '';
+    await loadPresetList();
+    refreshPresetButtons();
+    setPresetTip('预设已删除');
+  } catch (e) {
+    setPresetTip('删除预设失败: ' + e.message);
+  }
+}
+
 TEXT_FIELDS.concat(CHECK_FIELDS).forEach(id => {
   $(id).addEventListener('input', scheduleSave);
   $(id).addEventListener('change', scheduleSave);
@@ -316,6 +446,7 @@ async function poll() {
   setTimeout(poll, 1000);
 }
 loadConfig();
+loadPresetList();
 poll();
 </script>
 </body>

@@ -34,6 +34,7 @@ from fetch_gname_ykj_ranges import (
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 CONFIG_PATH = os.path.join(BASE_DIR, "web_config.json")
+PRESETS_PATH = os.path.join(BASE_DIR, "web_presets.json")
 
 app = FastAPI(title="gname 一口价网页工具")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -45,7 +46,7 @@ class StartRequest(BaseModel):
     dqsj_1: str = "30"
     jylx: str = "nei"
     fbsj_days: str = "2"
-    ranges: str = "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100"
+    ranges: str = "0-20,20.01-30,30.01-40,40.01-50,50.01-60,60.01-70,70.01-80,80.01-90,90.01-100,100.01-110,110.01-120,120.01-130,130.01-140,140.01-150,150.01-160,160.01-170,170.01-180,180.01-190,190.01-200"
     extra: str = ""
     output_dir: str = BASE_DIR
     pagesize: str = "500"
@@ -99,6 +100,52 @@ def write_saved_config(data: StartRequest) -> None:
     with open(tmp_path, "w", encoding="utf-8") as fp:
         json.dump(model_to_dict(data), fp, ensure_ascii=False, indent=2)
     os.replace(tmp_path, CONFIG_PATH)
+
+
+# ── 参数预设（多版本保存） ──────────────────────────────────────────
+
+class PresetRequest(BaseModel):
+    name: str
+    config: dict[str, Any] = {}
+
+
+def _read_presets() -> dict[str, dict[str, Any]]:
+    """读取所有预设，文件不存在或损坏时返回空字典。"""
+    if not os.path.exists(PRESETS_PATH):
+        return {}
+    try:
+        with open(PRESETS_PATH, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {}
+
+
+def _write_presets(presets: dict[str, dict[str, Any]]) -> None:
+    """先写临时文件再替换，避免中途出错。"""
+    tmp_path = PRESETS_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as fp:
+        json.dump(presets, fp, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, PRESETS_PATH)
+
+
+def _normalize_config(raw: dict[str, Any]) -> dict[str, Any]:
+    """以 StartRequest 默认值为骨架，把任意字典归一化成合法配置。"""
+    merged = model_to_dict(StartRequest())
+    for key, default_value in merged.items():
+        if key not in raw:
+            continue
+        value = raw[key]
+        if isinstance(default_value, bool):
+            if isinstance(value, bool):
+                merged[key] = value
+            else:
+                merged[key] = str(value).strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            merged[key] = "" if value is None else str(value)
+    return merged
 
 
 class TaskState:
@@ -428,6 +475,48 @@ def reset_config() -> dict[str, Any]:
             os.remove(CONFIG_PATH)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"清除参数失败: {exc}") from exc
+    return {"ok": True}
+
+
+# ── 参数预设 CRUD ──────────────────────────────────────────────────
+
+@app.get("/api/presets")
+def list_presets() -> dict[str, Any]:
+    """列出所有已保存的参数预设。"""
+    presets = _read_presets()
+    # 返回时把每个预设的配置都归一化一遍
+    result = {name: _normalize_config(cfg) for name, cfg in presets.items()}
+    return {"presets": result}
+
+
+@app.post("/api/presets")
+def save_preset(req: PresetRequest) -> dict[str, Any]:
+    """新建或更新一个参数预设（同名覆盖）。"""
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="预设名称不能为空")
+    if len(name) > 60:
+        raise HTTPException(status_code=400, detail="预设名称不能超过 60 个字符")
+    presets = _read_presets()
+    presets[name] = _normalize_config(req.config)
+    try:
+        _write_presets(presets)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"保存预设失败: {exc}") from exc
+    return {"ok": True, "name": name}
+
+
+@app.delete("/api/presets/{name}")
+def delete_preset(name: str) -> dict[str, Any]:
+    """删除一个参数预设。"""
+    presets = _read_presets()
+    if name not in presets:
+        raise HTTPException(status_code=404, detail=f"预设 '{name}' 不存在")
+    del presets[name]
+    try:
+        _write_presets(presets)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"删除预设失败: {exc}") from exc
     return {"ok": True}
 
 
