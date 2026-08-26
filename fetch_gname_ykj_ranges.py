@@ -595,17 +595,34 @@ def fetch_with_retry(
                 wait_for_manual_fix(code)
             continue
 
-        if isinstance(result, dict) and result.get("error"):
+        if isinstance(result, dict):
+            msg_text = str(result.get("msg", "") or "")
+            is_rate_limited = (
+                code == -1
+                or "频繁" in msg_text
+                or "稍后再试" in msg_text
+            )
+        else:
+            is_rate_limited = False
+
+        if isinstance(result, dict) and (result.get("error") or is_rate_limited):
             attempts += 1
-            print(f"[警告] 请求失败: {result.get('error')}")
+            message = result.get("error") or result.get("msg") or "未知错误"
+            print(f"[警告] 请求失败: {message}")
             if result.get("text"):
                 print(f"[调试] 响应片段: {result.get('text')}")
             if attempts > retry_limit:
                 return result
-            print(f"[重试] {retry_delay:.1f} 秒后重试当前页...")
+            if is_rate_limited:
+                # 限流：指数退避，等待更久再重试同一页
+                wait = retry_delay * (2 ** attempts)
+                print(f"[限流] 等待 {wait:.1f} 秒后重试当前页...")
+            else:
+                wait = retry_delay
+                print(f"[重试] {wait:.1f} 秒后重试当前页...")
             if should_stop and should_stop():
                 raise KeyboardInterrupt
-            time.sleep(retry_delay)
+            time.sleep(wait)
             if should_stop and should_stop():
                 raise KeyboardInterrupt
             continue
