@@ -51,10 +51,9 @@ if errorlevel 1 (
 
 %PYTHON_CMD% -m playwright install chromium
 
-start "" "http://127.0.0.1:8000"
-%PYTHON_CMD% -m uvicorn web_app:app --host 127.0.0.1 --port 8000
-if errorlevel 1 (
-    echo.
-    echo [ERROR] Web server exited with an error.
-    pause
-)
+set "WEB_PORT=8002"
+echo [INFO] Starting web server at http://127.0.0.1:%WEB_PORT%
+start "gname ykj web server" cmd /k "%PYTHON_CMD% -m uvicorn web_app:app --host 127.0.0.1 --port %WEB_PORT%"
+timeout /t 2 /nobreak >nul
+start "" "http://127.0.0.1:%WEB_PORT%"
+exit /b 0
