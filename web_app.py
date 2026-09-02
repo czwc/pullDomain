@@ -28,6 +28,7 @@ from fetch_gname_ykj_ranges import (
     build_price_ranges,
     fetch_range_pages,
     launch_context,
+    load_blacklist_domains,
     money,
     parse_extra_params,
     parse_uid_set,
@@ -55,6 +56,7 @@ class StartRequest(BaseModel):
     min_register_days: str = "60"
     filter_uids: str = ""
     filter_uids_mode: str = "exclude"
+    exclude_blacklist: bool = False
     import_price_divisor: str = "0.6"
     import_price_multiplier: str = "1.4"
     import_min_price: str = "80"
@@ -271,6 +273,11 @@ def build_args(data: StartRequest) -> argparse.Namespace:
         min_register_days=min_register_days,
         filter_uids=parse_uid_set(data.filter_uids),
         filter_uids_mode=(data.filter_uids_mode or "exclude").strip().lower(),
+        blacklist_domains=(
+            load_blacklist_domains((data.output_dir or BASE_DIR).strip() or BASE_DIR)
+            if data.exclude_blacklist
+            else None
+        ),
         import_price_divisor=import_price_divisor,
         import_price_multiplier=import_price_multiplier,
         import_min_price=import_min_price,
@@ -316,6 +323,8 @@ def worker(args: argparse.Namespace) -> None:
         if args.filter_uids:
             mode_text = "仅保留" if args.filter_uids_mode == "include" else "排除"
             state.log(f"[配置] {mode_text}uid: {', '.join(sorted(args.filter_uids))}")
+        if args.blacklist_domains is not None:
+            state.log(f"[配置] 去除累积黑名单域名: 已加载 {len(args.blacklist_domains)} 个黑名单域名")
         state.log(f"[配置] 0612导出价: 真实价格 / {args.import_price_divisor} * {args.import_price_multiplier}，最低 {args.import_min_price}")
         state.log("[配置] 发布时间: " + ("&".join(f"{k}={v}" for k, v in fbsj_params.items()) if fbsj_params else "全部"))
         if output_writer.csv_path:

@@ -252,6 +252,23 @@ def parse_uid_set(text: str) -> set[str]:
     return {part for part in re.split(r"[,，;；\s]+", (text or "").strip()) if part}
 
 
+def load_blacklist_domains(output_dir: str, filename: str = "filtered_uid_records.csv") -> set[str]:
+    """读取累积黑名单文件里已记录的全部域名（小写归一化）。"""
+    path = os.path.join(output_dir, filename)
+    domains: set[str] = set()
+    if not os.path.exists(path):
+        return domains
+    try:
+        with open(path, "r", encoding="utf-8-sig", newline="") as file:
+            for row in csv.DictReader(file):
+                domain = (row.get("domain") or "").strip().lower()
+                if domain:
+                    domains.add(domain)
+    except Exception as exc:
+        print(f"[警告] 读取黑名单文件失败，本次不按黑名单过滤: {exc}")
+    return domains
+
+
 EXCLUDED_FIELDS = ["date", "uid", "domain", "price", "currency", "zcsj", "dqsj"]
 
 
@@ -837,6 +854,17 @@ def fetch_range_pages(
                 if before != len(rows):
                     log(f"  [uid过滤] 排除指定uid: 本页 {before} 条中去掉 {before - len(rows)} 条")
 
+        blacklist = getattr(args, "blacklist_domains", None)
+        if blacklist:
+            before_bl = len(rows)
+            rows = [
+                row
+                for row in rows
+                if str(row.get("domain", "")).strip().lower() not in blacklist
+            ]
+            if before_bl != len(rows):
+                log(f"  [黑名单] 本页 {before_bl} 条中去掉 {before_bl - len(rows)} 条命中累积黑名单域名")
+
         all_rows.extend(rows)
         if output_writer:
             output_writer.append_rows(rows)
@@ -1093,6 +1121,13 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["exclude", "include"],
         help="exclude: remove rows with these uids (default); include: keep only these uids.",
     )
+    parser.add_argument(
+        "--exclude-blacklist",
+        dest="exclude_blacklist",
+        action="store_true",
+        default=False,
+        help="Also drop domains already recorded in the cumulative filtered_uid_records.csv.",
+    )
     parser.add_argument("--import-price-divisor", type=lambda v: parse_decimal(v, "import-price-divisor"), default=Decimal("0.6"))
     parser.add_argument("--import-price-multiplier", type=lambda v: parse_decimal(v, "import-price-multiplier"), default=Decimal("1.4"))
     parser.add_argument("--import-min-price", type=lambda v: parse_decimal(v, "import-min-price"), default=Decimal("80"))
@@ -1133,6 +1168,9 @@ def main() -> int:
         return 1
 
     args.filter_uids = parse_uid_set(args.filter_uids)
+    args.blacklist_domains = (
+        load_blacklist_domains(args.output_dir) if args.exclude_blacklist else None
+    )
 
     try:
 

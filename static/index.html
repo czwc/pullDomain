@@ -154,6 +154,11 @@
               </div>
             </div>
             <div class="hint">填写的uid是不要的卖家，会被去掉；多个用逗号或空格分隔，留空不过滤</div>
+            <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-weight:700;margin:10px 0 0;">
+              <input id="exclude_blacklist" type="checkbox" style="width:18px;height:18px;accent-color:var(--primary);margin:0;">
+              同时去除累积黑名单里的域名
+            </label>
+            <div class="hint">开启后，拉到的数据中命中 filtered_uid_records.csv 已有域名的会被去掉</div>
           </div>
           <div class="row">
             <div><label>价格除数</label><input id="import_price_divisor" value="0.6"></div>
@@ -188,7 +193,7 @@ const TEXT_FIELDS = [
   'ymhz','zcsj_2','dqsj_1','jylx','fbsj_days','pagesize','ranges','extra','output_dir',
   'min_register_days','import_min_price','import_price_divisor','import_price_multiplier','filter_uids','filter_uids_mode'
 ];
-const CHECK_FIELDS = ['export_csv','export_json','export_import_csv'];
+const CHECK_FIELDS = ['export_csv','export_json','export_import_csv','exclude_blacklist'];
 
 function payload() {
   const data = {};
