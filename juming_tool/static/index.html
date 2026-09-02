@@ -244,7 +244,11 @@
       <h2>WHOIS 增强（注册≥60天 + 聚名注册商）</h2>
       <div class="field">
         <label>明细 CSV 路径</label>
-        <input type="text" id="enrich-path" placeholder="抓取完成后自动填入，或手动粘贴">
+        <div class="profile-row">
+          <input type="text" id="enrich-path" placeholder="抓取完成后自动填入，或点击选择文件">
+          <button class="btn-ghost btn-mini" id="btn-enrich-pick" type="button">选择文件</button>
+        </div>
+        <div class="hint">CSV 需包含 domain 列（UTF-8 编码），仅处理 .com 域名；输出到同目录 _enriched.csv</div>
       </div>
       <div class="grid3">
         <div class="field">
@@ -472,6 +476,20 @@ async function pollEnrich() {
     renderEnrich(await resp.json());
   } catch (e) { /* ignore */ }
 }
+$("btn-enrich-pick").onclick = async () => {
+  $("btn-enrich-pick").disabled = true;
+  try {
+    const resp = await fetch("/api/enrich/pick");
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.detail || ("HTTP " + resp.status));
+    if (data.ok && data.path) {
+      $("enrich-path").value = data.path;
+      toast("已选择文件");
+    }
+  } catch (e) { toast(e.message); }
+  finally { $("btn-enrich-pick").disabled = false; }
+};
+
 $("btn-enrich-start").onclick = async () => {
   const path = $("enrich-path").value.trim();
   if (!path) { toast("请先填写或抓取明细 CSV 路径"); return; }

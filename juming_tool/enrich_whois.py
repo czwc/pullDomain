@@ -230,10 +230,19 @@ def read_domains(csv_path: str) -> list[tuple[str, dict[str, Any]]]:
     seen_set: set[str] = set()
     with open(csv_path, "r", encoding="utf-8-sig", newline="") as fp:
         reader = csv.DictReader(fp)
-        if "domain" not in (reader.fieldnames or []):
-            raise ValueError("CSV 缺少 domain 列")
+        fieldnames = [f for f in (reader.fieldnames or []) if f]
+        # domain 列匹配不区分大小写（Domain/DOMAIN），兼容中文"域名"表头
+        domain_key = next(
+            (f for f in fieldnames if f.strip().lower() == "domain" or f.strip() in ("域名", "域名列表")),
+            None,
+        )
+        if domain_key is None:
+            raise ValueError(
+                "CSV 缺少 domain 列（支持 Domain/domain/域名 表头），"
+                f"实际表头: {', '.join(fieldnames[:10]) or '(空)'}"
+            )
         for row in reader:
-            domain = (row.get("domain") or "").strip().lower()
+            domain = (row.get(domain_key) or "").strip().lower()
             if not domain or domain in seen_set:
                 continue
             # 只处理 .com（本工具专为 .com 设计）

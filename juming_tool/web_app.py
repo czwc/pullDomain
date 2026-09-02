@@ -539,6 +539,33 @@ def enrich_start(req: EnrichRequest) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.get("/api/enrich/pick")
+def enrich_pick() -> dict[str, Any]:
+    """弹出系统文件选择框，返回选中的 CSV 绝对路径。"""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="系统缺少 tkinter，无法弹出文件选择框") from exc
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    try:
+        root.focus_force()
+        path = filedialog.askopenfilename(
+            title="选择明细 CSV（需包含 domain 列）",
+            filetypes=[("CSV 文件", "*.csv"), ("所有文件", "*.*")],
+        )
+    finally:
+        root.destroy()
+
+    path = str(path or "").strip()
+    if not path:
+        return {"ok": False, "path": ""}
+    return {"ok": True, "path": os.path.normpath(path)}
+
+
 @app.get("/api/enrich/status")
 def enrich_status() -> dict[str, Any]:
     return enrich_state.snapshot()
