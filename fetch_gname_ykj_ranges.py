@@ -252,6 +252,90 @@ def parse_uid_set(text: str) -> set[str]:
     return {part for part in re.split(r"[,，;；\s]+", (text or "").strip()) if part}
 
 
+EXCLUDED_FIELDS = ["date", "uid", "domain", "price", "currency", "zcsj", "dqsj"]
+
+
+class ExcludedUidWriter:
+    """被 uid 过滤掉的黑名单记录写入器。
+
+    - 累积文件: 输出目录根下的 filtered_uid_records.csv，按域名去重，跨天持续追加
+    - 当次文件: 当天日期文件夹里 filtered_uid_<时间戳>.csv，只记录本次运行被过滤的数据
+    """
+
+    def __init__(self, output_dir: str, filename: str = "filtered_uid_records.csv") -> None:
+        self.path = os.path.join(output_dir, filename)
+        self._seen: set[str] = set()
+        self._seen_run: set[str] = set()
+        self._is_new_file = not os.path.exists(self.path) or os.path.getsize(self.path) == 0
+        if not self._is_new_file:
+            try:
+                with open(self.path, "r", encoding="utf-8-sig", newline="") as file:
+                    for old_row in csv.DictReader(file):
+                        domain = (old_row.get("domain") or "").strip()
+                        if domain:
+                            self._seen.add(domain)
+            except Exception as exc:
+                print(f"[警告] 读取被过滤记录文件失败，将只按本次内容去重: {exc}")
+
+        # 当次运行的文件，放在当天日期文件夹里；同秒重名时自动加序号
+        run_dir = output_day_dir(output_dir)
+        os.makedirs(run_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.run_path = os.path.join(run_dir, f"filtered_uid_{timestamp}.csv")
+        seq = 1
+        while os.path.exists(self.run_path):
+            self.run_path = os.path.join(run_dir, f"filtered_uid_{timestamp}_{seq}.csv")
+            seq += 1
+        with open(self.run_path, "w", encoding="utf-8-sig", newline="") as file:
+            csv.DictWriter(file, fieldnames=EXCLUDED_FIELDS).writeheader()
+
+    def _build_record(self, row: dict[str, Any]) -> dict[str, Any]:
+        raw = row.get("raw") or {}
+        return {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "uid": row.get("uid", ""),
+            "domain": str(row.get("domain", "")).strip(),
+            "price": row.get("price", ""),
+            "currency": row.get("currency", ""),
+            "zcsj": raw.get("zcsj", ""),
+            "dqsj": raw.get("dqsj", ""),
+        }
+
+    def append_rows(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        run_rows: list[dict[str, Any]] = []
+        cum_rows: list[dict[str, Any]] = []
+        for row in rows:
+            domain = str(row.get("domain", "")).strip()
+            if not domain:
+                continue
+            if domain not in self._seen_run:
+                self._seen_run.add(domain)
+                run_rows.append(self._build_record(row))
+            if domain not in self._seen:
+                self._seen.add(domain)
+                cum_rows.append(self._build_record(row))
+
+        # 当次文件：本次运行被过滤的全部记录（文件已带表头，直接追加）
+        if run_rows:
+            with open(self.run_path, "a", encoding="utf-8", newline="") as file:
+                writer = csv.DictWriter(file, fieldnames=EXCLUDED_FIELDS)
+                for record in run_rows:
+                    writer.writerow(record)
+
+        # 累积文件：只追加历史里没出现过的域名
+        if cum_rows:
+            with open(self.path, "a", encoding="utf-8", newline="") as file:
+                if self._is_new_file:
+                    file.write("\ufeff")
+                    csv.DictWriter(file, fieldnames=EXCLUDED_FIELDS).writeheader()
+                    self._is_new_file = False
+                writer = csv.DictWriter(file, fieldnames=EXCLUDED_FIELDS)
+                for record in cum_rows:
+                    writer.writerow(record)
+
+
 def parse_items(
     items: list[dict[str, Any]],
     price_min: Decimal,
@@ -684,6 +768,7 @@ def fetch_range_pages(
     manual_fix_handler: Callable[[int | None], None] | None = None,
     output_writer: IncrementalOutputWriter | None = None,
     should_stop: Callable[[], bool] | None = None,
+    excluded_writer: ExcludedUidWriter | None = None,
 ) -> int:
 
     page_no = 1
@@ -737,11 +822,20 @@ def fetch_range_pages(
         rows = parse_items(items, price_min, price_max, page_no, args.min_register_days)
         filter_uids = getattr(args, "filter_uids", None)
         if filter_uids:
+            mode = (getattr(args, "filter_uids_mode", "") or "exclude").strip().lower()
             before = len(rows)
-            rows = [row for row in rows if row.get("uid") in filter_uids]
-            skipped = before - len(rows)
-            if skipped:
-                log(f"  [uid过滤] 本页 {before} 条中保留 {len(rows)} 条，过滤 {skipped} 条")
+            if mode == "include":
+                rows = [row for row in rows if row.get("uid") in filter_uids]
+                if before != len(rows):
+                    log(f"  [uid过滤] 仅保留指定uid: 本页 {before} 条中保留 {len(rows)} 条")
+            else:
+                # 默认排除模式：填写的 uid 是不要的，从结果里去掉，被去掉的单独存档
+                excluded = [row for row in rows if row.get("uid") in filter_uids]
+                rows = [row for row in rows if row.get("uid") not in filter_uids]
+                if excluded_writer is not None and excluded:
+                    excluded_writer.append_rows(excluded)
+                if before != len(rows):
+                    log(f"  [uid过滤] 排除指定uid: 本页 {before} 条中去掉 {before - len(rows)} 条")
 
         all_rows.extend(rows)
         if output_writer:
@@ -846,6 +940,11 @@ def run(args: argparse.Namespace) -> int:
 
     all_rows: list[dict[str, Any]] = []
     output_writer = IncrementalOutputWriter(args)
+    excluded_writer = None
+    if args.filter_uids and args.filter_uids_mode != "include":
+        excluded_writer = ExcludedUidWriter(args.output_dir)
+        print(f"[保存] 被过滤记录(累积去重): {excluded_writer.path}")
+        print(f"[保存] 被过滤记录(当次): {excluded_writer.run_path}")
     print(f"[保存] CSV: {output_writer.csv_path}")
     print(f"[保存] JSONL: {output_writer.jsonl_path}")
 
@@ -872,6 +971,7 @@ def run(args: argparse.Namespace) -> int:
                         price_max,
                         all_rows,
                         output_writer=output_writer,
+                        excluded_writer=excluded_writer,
                     )
 
             finally:
@@ -984,7 +1084,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--filter-uids",
         dest="filter_uids",
         default="",
-        help="Only keep rows whose seller uid is in this list, separated by comma/space.",
+        help="Seller uids to filter, separated by comma/space. Combined with --filter-uids-mode.",
+    )
+    parser.add_argument(
+        "--filter-uids-mode",
+        dest="filter_uids_mode",
+        default="exclude",
+        choices=["exclude", "include"],
+        help="exclude: remove rows with these uids (default); include: keep only these uids.",
     )
     parser.add_argument("--import-price-divisor", type=lambda v: parse_decimal(v, "import-price-divisor"), default=Decimal("0.6"))
     parser.add_argument("--import-price-multiplier", type=lambda v: parse_decimal(v, "import-price-multiplier"), default=Decimal("1.4"))

@@ -143,7 +143,18 @@
             <div><label>注册天数大于</label><input id="min_register_days" value="60"><div class="hint">0=不过滤</div></div>
             <div><label>最低导出价</label><input id="import_min_price" value="80"></div>
           </div>
-          <div class="field"><label>卖家uid过滤</label><input id="filter_uids" placeholder="例如: 10001,10002"><div class="hint">多个uid用逗号或空格分隔，留空不过滤</div></div>
+          <div class="field"><label>卖家uid过滤</label>
+            <div class="row" style="grid-template-columns: 2fr 1fr; margin-bottom:8px;">
+              <div><input id="filter_uids" placeholder="例如: 10001,10002"></div>
+              <div>
+                <select id="filter_uids_mode" style="min-height:48px;width:100%;border:1px solid var(--border);border-radius:14px;padding:12px 14px;font-size:15px;background:#fff;color:var(--text);cursor:pointer;">
+                  <option value="exclude" selected>排除这些uid</option>
+                  <option value="include">仅保留这些uid</option>
+                </select>
+              </div>
+            </div>
+            <div class="hint">填写的uid是不要的卖家，会被去掉；多个用逗号或空格分隔，留空不过滤</div>
+          </div>
           <div class="row">
             <div><label>价格除数</label><input id="import_price_divisor" value="0.6"></div>
             <div><label>价格倍率</label><input id="import_price_multiplier" value="1.4"></div>
@@ -175,7 +186,7 @@ let lastLog = "";
 
 const TEXT_FIELDS = [
   'ymhz','zcsj_2','dqsj_1','jylx','fbsj_days','pagesize','ranges','extra','output_dir',
-  'min_register_days','import_min_price','import_price_divisor','import_price_multiplier','filter_uids'
+  'min_register_days','import_min_price','import_price_divisor','import_price_multiplier','filter_uids','filter_uids_mode'
 ];
 const CHECK_FIELDS = ['export_csv','export_json','export_import_csv'];
 
@@ -247,6 +258,8 @@ function renderFiles(paths) {
   if (paths.csv) items.push(['CSV', paths.csv]);
   if (paths.json) items.push(['JSON', paths.json]);
   if (paths.import_csv) items.push(['0612格式CSV', paths.import_csv]);
+  if (paths.excluded) items.push(['被过滤记录(累积)', paths.excluded]);
+  if (paths.excluded_run) items.push(['被过滤记录(当次)', paths.excluded_run]);
   box.innerHTML = items.map(([k,v]) => {
     const safe = escapeHtml(v);
     return `<div class="file"><div class="file-info"><b>${k}</b><br>${safe}</div>`

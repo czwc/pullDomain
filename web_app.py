@@ -22,6 +22,7 @@ from fetch_gname_ykj_ranges import (
     API_PATH,
     DEFAULT_PROFILE_DIR,
     SALES_URL,
+    ExcludedUidWriter,
     IncrementalOutputWriter,
     build_fbsj_params,
     build_price_ranges,
@@ -53,6 +54,7 @@ class StartRequest(BaseModel):
     pagesize: str = "500"
     min_register_days: str = "60"
     filter_uids: str = ""
+    filter_uids_mode: str = "exclude"
     import_price_divisor: str = "0.6"
     import_price_multiplier: str = "1.4"
     import_min_price: str = "80"
@@ -268,6 +270,7 @@ def build_args(data: StartRequest) -> argparse.Namespace:
         output_prefix="gname_ykj_ranges",
         min_register_days=min_register_days,
         filter_uids=parse_uid_set(data.filter_uids),
+        filter_uids_mode=(data.filter_uids_mode or "exclude").strip().lower(),
         import_price_divisor=import_price_divisor,
         import_price_multiplier=import_price_multiplier,
         import_min_price=import_min_price,
@@ -296,6 +299,7 @@ def manual_fix_handler(code: int | None) -> None:
 def worker(args: argparse.Namespace) -> None:
     rows: list[dict[str, Any]] = []
     output_writer: IncrementalOutputWriter | None = None
+    excluded_writer: ExcludedUidWriter | None = None
     exit_code = 0
     try:
         from playwright.sync_api import sync_playwright
@@ -310,7 +314,8 @@ def worker(args: argparse.Namespace) -> None:
         state.log(f"[配置] 每页数量: {args.pagesize}")
         state.log(f"[配置] 注册天数大于: {args.min_register_days}")
         if args.filter_uids:
-            state.log(f"[配置] 过滤uid: {', '.join(sorted(args.filter_uids))}")
+            mode_text = "仅保留" if args.filter_uids_mode == "include" else "排除"
+            state.log(f"[配置] {mode_text}uid: {', '.join(sorted(args.filter_uids))}")
         state.log(f"[配置] 0612导出价: 真实价格 / {args.import_price_divisor} * {args.import_price_multiplier}，最低 {args.import_min_price}")
         state.log("[配置] 发布时间: " + ("&".join(f"{k}={v}" for k, v in fbsj_params.items()) if fbsj_params else "全部"))
         if output_writer.csv_path:
@@ -319,6 +324,10 @@ def worker(args: argparse.Namespace) -> None:
             state.log(f"[保存] JSONL: {output_writer.jsonl_path}")
         if output_writer.import_csv_path:
             state.log(f"[保存] 0612格式CSV: {output_writer.import_csv_path}")
+        if args.filter_uids and args.filter_uids_mode != "include":
+            excluded_writer = ExcludedUidWriter(args.output_dir)
+            state.log(f"[保存] 被过滤记录(累积去重): {excluded_writer.path}")
+            state.log(f"[保存] 被过滤记录(当次): {excluded_writer.run_path}")
 
         with sync_playwright() as pw:
             context = launch_context(pw, args)
@@ -353,6 +362,7 @@ def worker(args: argparse.Namespace) -> None:
                         manual_fix_handler=manual_fix_handler,
                         output_writer=output_writer,
                         should_stop=lambda: state.stop_flag,
+                        excluded_writer=excluded_writer,
                     )
 
             finally:
@@ -370,6 +380,9 @@ def worker(args: argparse.Namespace) -> None:
         else:
             output_writer = IncrementalOutputWriter(args)
             paths = output_writer.finalize()
+        if excluded_writer:
+            paths["excluded"] = excluded_writer.path
+            paths["excluded_run"] = excluded_writer.run_path
         with state.lock:
             state.paths = paths
             state.count = len(rows)
