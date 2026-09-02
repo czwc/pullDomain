@@ -29,6 +29,7 @@ from fetch_gname_ykj_ranges import (
     launch_context,
     money,
     parse_extra_params,
+    parse_uid_set,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +52,7 @@ class StartRequest(BaseModel):
     output_dir: str = BASE_DIR
     pagesize: str = "500"
     min_register_days: str = "60"
+    filter_uids: str = ""
     import_price_divisor: str = "0.6"
     import_price_multiplier: str = "1.4"
     import_min_price: str = "80"
@@ -265,6 +267,7 @@ def build_args(data: StartRequest) -> argparse.Namespace:
         output_dir=(data.output_dir or BASE_DIR).strip() or BASE_DIR,
         output_prefix="gname_ykj_ranges",
         min_register_days=min_register_days,
+        filter_uids=parse_uid_set(data.filter_uids),
         import_price_divisor=import_price_divisor,
         import_price_multiplier=import_price_multiplier,
         import_min_price=import_min_price,
@@ -306,6 +309,8 @@ def worker(args: argparse.Namespace) -> None:
         state.log(f"[配置] 后缀: {args.ymhz}")
         state.log(f"[配置] 每页数量: {args.pagesize}")
         state.log(f"[配置] 注册天数大于: {args.min_register_days}")
+        if args.filter_uids:
+            state.log(f"[配置] 过滤uid: {', '.join(sorted(args.filter_uids))}")
         state.log(f"[配置] 0612导出价: 真实价格 / {args.import_price_divisor} * {args.import_price_multiplier}，最低 {args.import_min_price}")
         state.log("[配置] 发布时间: " + ("&".join(f"{k}={v}" for k, v in fbsj_params.items()) if fbsj_params else "全部"))
         if output_writer.csv_path:

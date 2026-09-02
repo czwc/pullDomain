@@ -143,6 +143,7 @@
             <div><label>注册天数大于</label><input id="min_register_days" value="60"><div class="hint">0=不过滤</div></div>
             <div><label>最低导出价</label><input id="import_min_price" value="80"></div>
           </div>
+          <div class="field"><label>卖家uid过滤</label><input id="filter_uids" placeholder="例如: 10001,10002"><div class="hint">多个uid用逗号或空格分隔，留空不过滤</div></div>
           <div class="row">
             <div><label>价格除数</label><input id="import_price_divisor" value="0.6"></div>
             <div><label>价格倍率</label><input id="import_price_multiplier" value="1.4"></div>
@@ -174,7 +175,7 @@ let lastLog = "";
 
 const TEXT_FIELDS = [
   'ymhz','zcsj_2','dqsj_1','jylx','fbsj_days','pagesize','ranges','extra','output_dir',
-  'min_register_days','import_min_price','import_price_divisor','import_price_multiplier'
+  'min_register_days','import_min_price','import_price_divisor','import_price_multiplier','filter_uids'
 ];
 const CHECK_FIELDS = ['export_csv','export_json','export_import_csv'];
 

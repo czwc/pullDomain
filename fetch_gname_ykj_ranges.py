@@ -239,6 +239,19 @@ def extract_count(data: Any) -> int | None:
     return None
 
 
+def extract_uid(item: dict[str, Any]) -> str:
+    for key in ("uid", "user_id", "userid", "sell_uid", "seller_uid", "hyid"):
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def parse_uid_set(text: str) -> set[str]:
+    """把逗号/空格/分号分隔的 uid 字符串解析成集合。"""
+    return {part for part in re.split(r"[,，;；\s]+", (text or "").strip()) if part}
+
+
 def parse_items(
     items: list[dict[str, Any]],
     price_min: Decimal,
@@ -276,6 +289,7 @@ def parse_items(
                 "domain": str(domain),
                 "price": str(price),
                 "currency": str(currency),
+                "uid": extract_uid(item),
                 "range_min": money(price_min),
                 "range_max": money(price_max),
                 "page": page_no,
@@ -301,6 +315,7 @@ CSV_FIELDS = [
     "domain",
     "price",
     "currency",
+    "uid",
     "fbsj",
     "zcsj",
     "dqsj",
@@ -336,6 +351,7 @@ def csv_row(row: dict[str, Any]) -> dict[str, Any]:
         "domain": row.get("domain", ""),
         "price": row.get("price", ""),
         "currency": row.get("currency", ""),
+        "uid": row.get("uid", ""),
         "fbsj": raw.get("fbsj", ""),
         "zcsj": raw.get("zcsj", ""),
         "dqsj": raw.get("dqsj", ""),
@@ -719,6 +735,13 @@ def fetch_range_pages(
             seen_pages.add(signature)
 
         rows = parse_items(items, price_min, price_max, page_no, args.min_register_days)
+        filter_uids = getattr(args, "filter_uids", None)
+        if filter_uids:
+            before = len(rows)
+            rows = [row for row in rows if row.get("uid") in filter_uids]
+            skipped = before - len(rows)
+            if skipped:
+                log(f"  [uid过滤] 本页 {before} 条中保留 {len(rows)} 条，过滤 {skipped} 条")
 
         all_rows.extend(rows)
         if output_writer:
@@ -957,6 +980,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir", default=".")
     parser.add_argument("--output-prefix", default="gname_ykj_ranges")
     parser.add_argument("--min-register-days", type=int, default=60)
+    parser.add_argument(
+        "--filter-uids",
+        dest="filter_uids",
+        default="",
+        help="Only keep rows whose seller uid is in this list, separated by comma/space.",
+    )
     parser.add_argument("--import-price-divisor", type=lambda v: parse_decimal(v, "import-price-divisor"), default=Decimal("0.6"))
     parser.add_argument("--import-price-multiplier", type=lambda v: parse_decimal(v, "import-price-multiplier"), default=Decimal("1.4"))
     parser.add_argument("--import-min-price", type=lambda v: parse_decimal(v, "import-min-price"), default=Decimal("80"))
@@ -995,6 +1024,8 @@ def main() -> int:
     if not any((args.export_csv, args.export_json, args.export_import_csv)):
         print("[错误] 至少需要启用一种导出文件")
         return 1
+
+    args.filter_uids = parse_uid_set(args.filter_uids)
 
     try:
 
