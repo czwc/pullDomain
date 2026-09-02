@@ -1,0 +1,17 @@
+# 运行时缓存与数据，不提交
+__pycache__/
+*.pyc
+*.db
+
+# 浏览器登录态（体积大且含会话）
+juming_browser_profile/
+
+# 抓取/增强输出数据（按天文件夹与衍生文件）
+20*/
+*_enriched.csv
+
+# 临时测试文件
+_smoke*
+_test*
+_probe*
+_fix*

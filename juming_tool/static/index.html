@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>聚名网一口价抓取</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --card: #ffffff;
+    --border: #e3e8f0;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --danger: #dc2626;
+    --ok: #16a34a;
+    --warn: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft YaHei", "PingFang SC", -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a8a, #2563eb);
+    color: #fff;
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: .85; margin-top: 4px; }
+  .status-badge {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.18);
+    font-size: 13px;
+  }
+  .status-badge.running { background: #f59e0b; color: #111; }
+  .status-badge.done { background: var(--ok); color: #fff; }
+  .layout {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 15px;
+    border-left: 4px solid var(--primary);
+    padding-left: 8px;
+  }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; margin-bottom: 4px; color: var(--muted); font-size: 12px; }
+  .field input[type=text], .field select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: #fff;
+  }
+  .field input:focus { outline: none; border-color: var(--primary); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+  .checks { display: flex; gap: 16px; flex-wrap: wrap; }
+  .checks label { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+  button {
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity .15s;
+  }
+  button:hover { opacity: .88; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary.main { background: var(--ok); font-weight: 600; }
+  .btn-warn { background: #f59e0b; color: #111; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-ghost { background: #eef2f7; color: var(--text); }
+  .btn-mini { padding: 4px 10px; font-size: 12px; }
+  .divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+  #log {
+    height: 480px;
+    overflow-y: auto;
+    background: #0f172a;
+    color: #cbd5e1;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 12px;
+    border-radius: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .files { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .file-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: #f8fafc; border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px;
+  }
+  .file-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count-line { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .profile-row { display: flex; gap: 8px; align-items: center; }
+  .profile-row select, .profile-row input { flex: 1; }
+  .toast {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    background: #111827; color: #fff; padding: 8px 18px; border-radius: 8px;
+    font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .25s;
+    z-index: 99;
+  }
+  .toast.show { opacity: .95; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>聚名网一口价抓取</h1>
+    <div class="sub">juming.com/ykj · 真实浏览器会话 · 按价格区间分页拉取</div>
+  </div>
+  <div class="status-badge" id="badge">就绪</div>
+</header>
+
+<div class="layout">
+  <div>
+    <div class="card">
+      <h2>查询条件</h2>
+      <div class="field">
+        <label>域名后缀 ymhz</label>
+        <input type="text" id="ymhz" value=".com">
+        <div class="hint">多个用英文逗号分隔，带点，如 .com,.cn,.top</div>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label>到期时间(天) dqsj_1</label>
+          <input type="text" id="dqsj_1" value="30">
+          <div class="hint">到期天数下限，留空不过滤</div>
+        </div>
+        <div class="field">
+          <label>每页数量 psize</label>
+          <input type="text" id="psize" value="500">
+          <div class="hint">接口最大 500，需要会员</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>价格区间 ranges</label>
+        <input type="text" id="ranges" value="0-100">
+        <div class="hint">逗号分隔多段，如 0-20,20.01-30,30.01-100，对应 qian_1/qian_2</div>
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label>pxsj</label>
+          <input type="text" id="pxsj" value="1">
+        </div>
+        <div class="field">
+          <label>排序 jgpx</label>
+          <input type="text" id="jgpx" value="38">
+        </div>
+        <div class="field">
+          <label>方向 jgpx2</label>
+          <input type="text" id="jgpx2" value="1">
+        </div>
+      </div>
+      <div class="field">
+        <label>附加参数 extra（可选）</label>
+        <input type="text" id="extra" placeholder="key=value&key2=value2">
+      </div>
+      <div class="field">
+        <label>输出目录（留空=工具目录）</label>
+        <input type="text" id="output_dir" placeholder="">
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>导出与定价</h2>
+      <div class="field checks">
+        <label><input type="checkbox" id="export_csv"> 明细 CSV</label>
+        <label><input type="checkbox" id="export_json"> JSON</label>
+        <label><input type="checkbox" id="export_import_csv" checked> 导入 CSV</label>
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label>价格除数</label>
+          <input type="text" id="import_price_divisor" value="0.6">
+        </div>
+        <div class="field">
+          <label>价格倍率</label>
+          <input type="text" id="import_price_multiplier" value="1.4">
+        </div>
+        <div class="field">
+          <label>最低导出价</label>
+          <input type="text" id="import_min_price" value="80">
+        </div>
+      </div>
+      <div class="hint">导入价 = 真实价格 ÷ 除数 × 倍率（向上取整），低于最低导出价按最低价。</div>
+      <hr class="divider">
+      <div class="btn-row">
+        <button class="btn-primary main" id="btn-start">开始抓取</button>
+        <button class="btn-warn" id="btn-ready" disabled>登录/验证完成，开始</button>
+        <button class="btn-warn" id="btn-continue" disabled>验证完成，继续</button>
+        <button class="btn-danger" id="btn-stop" disabled>停止</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn-ghost btn-mini" id="btn-save">保存参数</button>
+        <button class="btn-ghost btn-mini" id="btn-reset">恢复默认</button>
+      </div>
+      <hr class="divider">
+      <div class="field">
+        <label>查询方案</label>
+        <div class="profile-row">
+          <select id="profile-select"><option value="">-- 选择方案 --</option></select>
+          <button class="btn-ghost btn-mini" id="btn-profile-load">加载</button>
+          <button class="btn-ghost btn-mini" id="btn-profile-del">删除</button>
+        </div>
+        <div class="profile-row" style="margin-top:6px;">
+          <input type="text" id="profile-name" placeholder="方案名称">
+          <button class="btn-ghost btn-mini" id="btn-profile-save">另存当前</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h2>WHOIS 增强（注册≥60天 + 聚名注册商）</h2>
+      <div class="field">
+        <label>明细 CSV 路径</label>
+        <input type="text" id="enrich-path" placeholder="抓取完成后自动填入，或手动粘贴">
+      </div>
+      <div class="grid3">
+        <div class="field">
+          <label>注册≥天数</label>
+          <input type="text" id="enrich-min-days" value="60">
+        </div>
+        <div class="field">
+          <label>注册商</label>
+          <select id="enrich-registrar">
+            <option value="juming" selected>仅聚名(3758)</option>
+            <option value="any">不过滤</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>并发</label>
+          <input type="text" id="enrich-workers" value="15">
+        </div>
+      </div>
+      <div class="field checks">
+        <label><input type="checkbox" id="enrich-force"> 忽略缓存重新查询</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn-primary main" id="btn-enrich-start">开始增强</button>
+        <button class="btn-danger" id="btn-enrich-stop" disabled>停止</button>
+      </div>
+      <div class="count-line" id="enrich-status">就绪</div>
+      <div id="enrich-log" style="height:160px;overflow-y:auto;background:#0f172a;color:#cbd5e1;font-family:Consolas,monospace;font-size:12px;line-height:1.6;padding:10px;border-radius:8px;margin-top:8px;">等待增强...</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>运行日志</h2>
+    <div id="log">等待任务...</div>
+    <div class="count-line" id="count-line"></div>
+    <div class="files" id="files"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const FIELDS = ["ymhz","dqsj_1","pxsj","jgpx","jgpx2","psize","ranges","extra","output_dir",
+  "import_price_divisor","import_price_multiplier","import_min_price"];
+const BOOLS = ["export_csv","export_json","export_import_csv"];
+
+const $ = id => document.getElementById(id);
+let running = false;
+
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2000);
+}
+
+function collectConfig() {
+  const cfg = {};
+  FIELDS.forEach(f => cfg[f] = $(f).value);
+  BOOLS.forEach(f => cfg[f] = $(f).checked);
+  return cfg;
+}
+
+function applyConfig(cfg) {
+  if (!cfg) return;
+  FIELDS.forEach(f => { if (cfg[f] !== undefined) $(f).value = cfg[f]; });
+  BOOLS.forEach(f => { if (cfg[f] !== undefined) $(f).checked = !!cfg[f]; });
+}
+
+async function api(path, body) {
+  const opt = body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)}
+                    : {method:"POST"};
+  const resp = await fetch(path, opt);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.detail || ("HTTP " + resp.status));
+  return data;
+}
+
+function setButtons() {
+  $("btn-start").disabled = running;
+  $("btn-ready").disabled = !running;
+  $("btn-continue").disabled = !running;
+  $("btn-stop").disabled = !running;
+}
+
+function renderStatus(snap) {
+  running = !!snap.running;
+  const badge = $("badge");
+  badge.textContent = snap.status || "就绪";
+  badge.className = "status-badge" + (running ? " running" : (snap.status === "完成" ? " done" : ""));
+  setButtons();
+
+  const logEl = $("log");
+  const atBottom = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 30;
+  logEl.textContent = (snap.logs && snap.logs.length) ? snap.logs.join("\n") : "等待任务...";
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+
+  $("count-line").textContent = snap.count ? `共 ${snap.count} 条记录` : "";
+  const files = $("files");
+  files.innerHTML = "";
+  const labels = {csv: "明细CSV", import_csv: "导入CSV", json: "JSON", jsonl: "JSONL"};
+  Object.entries(snap.paths || {}).forEach(([key, path]) => {
+    if (!path) return;
+    const item = document.createElement("div");
+    item.className = "file-item";
+    const span = document.createElement("span");
+    span.textContent = (labels[key] || key) + "：" + path;
+    span.title = path;
+    const btn = document.createElement("button");
+    btn.className = "btn-ghost btn-mini";
+    btn.textContent = "打开位置";
+    btn.onclick = async () => {
+      try { await api("/api/reveal", {path}); } catch (e) { toast(e.message); }
+    };
+    item.appendChild(span);
+    item.appendChild(btn);
+    files.appendChild(item);
+  });
+
+  // 抓取完成后自动把明细 CSV 路径填进增强输入框
+  if (snap.paths && snap.paths.csv && !$("enrich-path").value) {
+    $("enrich-path").value = snap.paths.csv;
+  }
+}
+
+async function poll() {
+  try {
+    const resp = await fetch("/api/status");
+    renderStatus(await resp.json());
+  } catch (e) { /* 服务未启动时忽略 */ }
+}
+
+$("btn-start").onclick = async () => {
+  try {
+    await api("/api/start", collectConfig());
+    toast("已开始");
+    poll();
+  } catch (e) { toast(e.message); }
+};
+
+$("btn-ready").onclick = async () => {
+  try { await api("/api/ready"); poll(); } catch (e) { toast(e.message); }
+};
+
+$("btn-continue").onclick = async () => {
+  try { await api("/api/continue"); poll(); } catch (e) { toast(e.message); }
+};
+
+$("btn-stop").onclick = async () => {
+  try { await api("/api/stop"); poll(); } catch (e) { toast(e.message); }
+};
+
+$("btn-save").onclick = async () => {
+  try { await api("/api/config", collectConfig()); toast("参数已保存"); } catch (e) { toast(e.message); }
+};
+
+$("btn-reset").onclick = async () => {
+  try {
+    await api("/api/config/reset");
+    const resp = await fetch("/api/config");
+    const data = await resp.json();
+    applyConfig(data.config);
+    toast("已恢复默认");
+  } catch (e) { toast(e.message); }
+};
+
+async function refreshProfiles() {
+  try {
+    const resp = await fetch("/api/profiles");
+    const data = await resp.json();
+    const sel = $("profile-select");
+    sel.innerHTML = '<option value="">-- 选择方案 --</option>';
+    (data.profiles || []).forEach(name => {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      sel.appendChild(opt);
+    });
+  } catch (e) { /* ignore */ }
+}
+
+$("btn-profile-save").onclick = async () => {
+  const name = $("profile-name").value.trim();
+  if (!name) { toast("请输入方案名称"); return; }
+  try {
+    await api("/api/profiles/save", {name, config: collectConfig()});
+    toast("方案已保存");
+    refreshProfiles();
+  } catch (e) { toast(e.message); }
+};
+
+$("btn-profile-load").onclick = async () => {
+  const name = $("profile-select").value;
+  if (!name) { toast("请先选择方案"); return; }
+  try {
+    const data = await api("/api/profiles/load", {name});
+    applyConfig(data.config);
+    toast("已加载: " + name);
+  } catch (e) { toast(e.message); }
+};
+
+$("btn-profile-del").onclick = async () => {
+  const name = $("profile-select").value;
+  if (!name) { toast("请先选择方案"); return; }
+  try {
+    await api("/api/profiles/delete", {name});
+    toast("已删除: " + name);
+    refreshProfiles();
+  } catch (e) { toast(e.message); }
+};
+
+// ---- WHOIS 增强 ----
+let enrichRunning = false;
+function renderEnrich(snap) {
+  enrichRunning = !!snap.running;
+  $("btn-enrich-start").disabled = enrichRunning;
+  $("btn-enrich-stop").disabled = !enrichRunning;
+  $("enrich-status").textContent = (snap.status || "就绪") + (snap.count ? ` · 通过 ${snap.count} 条` : "");
+  const el = $("enrich-log");
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+  el.textContent = (snap.logs && snap.logs.length) ? snap.logs.join("\n") : "等待增强...";
+  if (atBottom) el.scrollTop = el.scrollHeight;
+}
+async function pollEnrich() {
+  try {
+    const resp = await fetch("/api/enrich/status");
+    renderEnrich(await resp.json());
+  } catch (e) { /* ignore */ }
+}
+$("btn-enrich-start").onclick = async () => {
+  const path = $("enrich-path").value.trim();
+  if (!path) { toast("请先填写或抓取明细 CSV 路径"); return; }
+  try {
+    await api("/api/enrich/start", {
+      path,
+      min_register_days: parseInt($("enrich-min-days").value) || 60,
+      registrar: $("enrich-registrar").value,
+      workers: parseInt($("enrich-workers").value) || 15,
+      force: $("enrich-force").checked,
+    });
+    toast("增强已开始");
+    pollEnrich();
+  } catch (e) { toast(e.message); }
+};
+$("btn-enrich-stop").onclick = async () => {
+  try { await api("/api/enrich/stop"); pollEnrich(); } catch (e) { toast(e.message); }
+};
+
+(async function init() {
+  try {
+    const resp = await fetch("/api/config");
+    const data = await resp.json();
+    applyConfig(data.config);
+  } catch (e) { /* ignore */ }
+  refreshProfiles();
+  poll();
+  pollEnrich();
+  setInterval(poll, 1000);
+  setInterval(pollEnrich, 1000);
+})();
+</script>
+</body>
+</html>
